@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0
+
+Saves more without touching how smart it is.
+
+- No bouncing: the first easy message after harder work counts the cost of coming back up, so a lone "ok" or "thanks" stays on the current model at low effort. Two easy messages in a row still move down.
+- New-task hint: in a session past 60,000 tokens, the judge also answers "is this a new, unrelated task?". When it clearly is (and the message is a real task, not a quick side question), Clutch suggests `/clear` or `/compact`. It never clears anything itself.
+- Subagent routing is on by default (`/clutch agents off` turns it off).
+- Checked: changing only the effort does not break the prompt cache in Claude Code, so effort routing stays per message.
+
 ## 1.5.1
 
 - Benchmarks: the Torque index (intelligence kept, cost and speed in one number) and BENCHMARKS.md, which explains every test and shows the raw results. New `bench/session_bench.py` (real coding sessions, with and without Clutch) and `bench/quality_bench.py` (trick questions graded by code).

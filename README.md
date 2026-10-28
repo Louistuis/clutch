@@ -78,7 +78,7 @@ These were small tests, so treat them as a good sign, not a promise.
 | `/clutch brief off` | Stops the brief to save usage (`/clutch brief on` turns it back on). |
 | `/clutch savings` | What Clutch has saved so far, at API prices. |
 | `/clutch project ...` | Settings for this project only: its own mode, and a lowest or highest model. |
-| `/clutch agents on` | Also picks the model for general-purpose subagents (off by default). |
+| `/clutch agents off` | Stops picking the model for general-purpose subagents (on by default). |
 | `/clutch status` | Shows the judge, the download or key, the mode and the last pick. |
 | `/clutch help` | Lists these commands. |
 
@@ -190,8 +190,11 @@ Type `/clutch brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file`
 Clutch is built to spend less, not just to pick well:
 
 - **Cost-aware shifting.** Claude Code keeps your conversation in a prompt cache, which is read back cheaply, but only by the same model. Changing model means reading everything again at full price. Before moving to a smaller model, Clutch prices the next request both ways at API list prices: it moves when the smaller model is cheaper even after that re-read (Haiku 5.5 almost always is), and otherwise keeps the bigger one (shown as `opus (held)` in the status line, at low effort) until three easy messages in a row or until the cache has gone cold after 5 minutes. Moving up to a stronger model always happens at once.
+- **No bouncing.** A lone "ok" or "thanks" between two Sonnet tasks stays on Sonnet at low effort, because dropping to Haiku and coming straight back would mean reading the whole conversation again at Sonnet's full price. Two easy messages in a row do move down.
+- **A nudge to start fresh.** In a long session (60,000+ tokens), every message re-reads the whole thing. When you start a clearly new task, Clutch shows a short hint that `/clear` (start fresh) or `/compact` (keep a summary) would make every following message much cheaper. It never clears anything by itself, and quick side questions don't trigger it.
+- **Effort changes are free.** Changing only the thinking effort does not break the prompt cache (we checked: after going from high to low effort and back, Claude Code still read 38,000 and then 50,000 tokens from the cache), so Clutch adjusts effort on every message.
 - **`/clutch savings`** shows what Clutch has spent and saved so far: every routed request priced at the model Clutch picked and at your own session model, plus the briefs and the judge. In a test session it came to 58% less. On a Pro or Max plan, read it as a share of your usage limits.
-- **Subagents, if you want (`/clutch agents on`).** Helper agents are often the biggest hidden spend. With this on, a general-purpose subagent that has no model of its own gets one picked for its task, so a quick lookup runs on Haiku. Agents that name their own model keep it. Off by default.
+- **Subagents.** Helper agents are often the biggest hidden spend. A general-purpose subagent that has no model of its own gets one picked for its task, so a quick lookup runs on Haiku. Agents that name their own model keep it. On by default; `/clutch agents off` turns it off.
 - **No judge for small talk.** "thanks", "hi", "nice" and the like go straight to the lightest setting, with no judge call and no wait.
 - **`/clutch-effort`** never changes the model at all, so the cache is never lost. It is the cheapest mode on very long conversations.
 - **`/clutch brief off`** saves the Haiku calls (see above). Short sessions skip the brief anyway until there is something to summarise.

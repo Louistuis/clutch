@@ -1,6 +1,6 @@
 {
   "name": "clutch",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Clutch: automatic gear changes for Claude Code. Jev 1.14 (TypeSafe, via OpenRouter) scores each prompt with a Haiku-written brief of the session, and the turn gets the model and effort to match",
   "author": {
     "name": "Louis Nordbø"

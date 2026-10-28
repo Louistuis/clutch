@@ -51,6 +51,10 @@ const PRICE: Record<string, { in: number; out: number; read: number }> = {
   haiku: { in: 0.1, out: 0.5, read: 0.01 },
   'haiku-long': { in: 0.5, out: 2.5, read: 0.05 },
 }
+// A new, unrelated task in a long session: suggest /clear or /compact, since every message re-reads it all
+const NEW_TOPIC_MIN_TOKENS = 60000
+const NEW_TOPIC_QUESTION = 'Does the user\'s last message start a new task unrelated to what the session has been working on?'
+const NEW_TOPIC_HINT_AT = 0.8
 // A rough guess at a reply's length (thinking included) by level, for comparing two models' next request
 const EXPECTED_OUTPUT = [400, 1500, 4000, 8000, 15000]
 // Thanks and greetings are trivial whatever came before: no judge call, no wait
@@ -112,7 +116,9 @@ let fetching: AsyncGenerator<unknown, unknown> | null = null
 let briefOn = true
 let lastMain: { model: string; at: number } | null = null
 let easyStreak = 0
-let agentsOn = false
+let agentsOn = true
+let newTopic: number | null = null
+let messagesSinceHint = 99
 type ProjectRule = { mode?: RouterMode; min?: string; max?: string }
 let project: ProjectRule = {}
 let projectRoot = ''
@@ -383,8 +389,10 @@ async function post($: EngineInterface, url: string, key: string | null, body: u
 
 // Local when it is on and running; Jev when local is off. Jev and llama.cpp's /v1/systemone take the same request
 let used = 'Jev'
-async function score($: EngineInterface, state: string): Promise<number | null> {
-  const questions = { difficulty: { type: 'score', instructions: QUESTION, criteria: LEVELS } }
+async function score($: EngineInterface, state: string, askNewTopic = false): Promise<number | null> {
+  const questions: Record<string, unknown> = { difficulty: { type: 'score', instructions: QUESTION, criteria: LEVELS } }
+  if (askNewTopic) questions.newTopic = { type: 'noul', instructions: NEW_TOPIC_QUESTION }
+  newTopic = null
   let d: any = null
   used = localOn && local.phase === 'ready' ? 'local' : 'Jev'
   if (localOn && local.phase === 'ready') {
@@ -401,6 +409,8 @@ async function score($: EngineInterface, state: string): Promise<number | null> 
     if (typeof d?.usage?.cost === 'number') await addSavings($, { judge: d.usage.cost })
   }
   const s = d?.answers?.difficulty?.score
+  const n = d?.answers?.newTopic?.noul
+  if (typeof n === 'number') newTopic = n
   return typeof s === 'number' ? s : null
 }
 
@@ -412,10 +422,19 @@ async function classify($: EngineInterface, text: string, mode: RouterMode): Pro
   // The brief is background; the job is still whatever the last message asks for
   const state = (brief ? `Background on the session (it does not set the job size; the user's last message does):\n${brief}\n\n` : '')
     + (before ? `Assistant: ${before.slice(-1500)}\n\n` : '') + `User: ${text.slice(0, 8000)}`
-  const s = await score($, state)
+  messagesSinceHint++
+  // Only worth asking once the session is long and has a brief to compare against
+  const long = !!brief && messagesSinceHint > 5 && (await contextTokens($)) >= NEW_TOPIC_MIN_TOKENS
+  const s = await score($, state, long)
+  // A quick side question ("what's the capital of Peru?") is unrelated too, but not worth leaving the session for
+  if (long && s !== null && s >= 1.5 && newTopic !== null && newTopic >= NEW_TOPIC_HINT_AT) {
+    messagesSinceHint = 0
+    const k = Math.round((await contextTokens($)) / 1000)
+    $.ui.toast(`Clutch: this looks like a new task. Every message here re-reads about ${k}k tokens of the old one; /clear starts fresh, /compact keeps a short summary.`, { timeoutMs: 15000 })
+  }
   // CLUTCH_DEBUG=<file>: append what the judge saw and said, for testing the router
   const debug = await $.env.get('CLUTCH_DEBUG')
-  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${used}: ${s?.toFixed(2) ?? 'no answer'}\n${state}\n`))
+  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${used}: ${s?.toFixed(2) ?? 'no answer'}${newTopic !== null ? ` (new topic ${newTopic.toFixed(2)})` : ''}\n${state}\n`))
   if (s === null) return null
   const level = Math.max(0, Math.min(4, Math.round(s)))
   return shift($, { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? clamp(MODELS[level]!) : undefined })
@@ -444,7 +463,9 @@ async function shift($: EngineInterface, r: Route): Promise<Route> {
   const stay = priceOf(lastMain.model, context)
   const move = priceOf(r.model, context)
   const stayCost = context * stay.read + out * stay.out
-  const moveCost = context * move.in * 1.25 + out * move.out
+  // The first easy message after harder work is usually a one-off ("thanks", "ok"): count the trip back up too
+  const returnTrip = easyStreak === 1 ? context * (stay.in * 1.25 - stay.read) : 0
+  const moveCost = context * move.in * 1.25 + out * move.out + returnTrip
   if (moveCost <= stayCost) { easyStreak = 0; return r }
   return { ...r, model: lastMain.model, held: true }
 }
@@ -531,7 +552,7 @@ const HELP = [
   '  /clutch brief off  stop the brief to save usage (/clutch brief on turns it back on)',
   '  /clutch savings    what Clutch saved so far, at API prices',
   '  /clutch project    settings for this project only (mode, min and max model)',
-  '  /clutch agents on  also pick the model for general-purpose subagents (off by default)',
+  '  /clutch agents off stop picking the model for general-purpose subagents (on by default)',
   '  /clutch status     check the judge, the key, the mode and the last pick',
 ].join('\n')
 
@@ -729,7 +750,7 @@ export const register: Register = on => {
     const saved = (await $.store.get('mode')) as RouterMode | undefined
     localOn = (await $.store.get('local')) === true
     briefOn = (await $.store.get('brief')) !== false
-    agentsOn = (await $.store.get('agents')) === true
+    agentsOn = (await $.store.get('agents')) !== false
     await loadProject($)
     if (saved) await update($, modeAtom, () => saved)
     shown = { mode: saved ?? 'off', route: null }
