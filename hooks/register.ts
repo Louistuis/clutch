@@ -36,13 +36,23 @@ const MODEL = {
 const MIN_MEMORY = 8 * 2 ** 30
 const MIN_FREE_DISK = MODEL.bytes + 2 ** 30
 
-// Cache-aware shifting. A model change makes the API read the whole context (Claude Code's system prompt
-// and tools, then the conversation) again at full price, while staying put reads it from the prompt cache
-// at a tenth of that. One easy message in the middle of hard work is cheaper on the big model; a run of
-// them pays for the move. So moving down waits for DOWNSHIFT_AFTER easy picks in a row, unless the cache
-// has gone cold anyway. Moving up always happens at once.
+// Cost-aware shifting. A model change makes the API read the whole context (Claude Code's system prompt
+// and tools, then the conversation) again at full price plus the cache write, while staying put reads it
+// from the prompt cache. Moving down happens when the next request is cheaper on the smaller model even
+// after that re-read (Haiku nearly always is), after DOWNSHIFT_AFTER easy picks in a row (the move then
+// pays for itself over the next turns), or once the cache has gone cold. Moving up always happens at once.
 const DOWNSHIFT_AFTER = 3
 const CACHE_WARM_MS = 5 * 60 * 1000
+// API list prices in USD per million tokens (Anthropic first-party, October 2026). A cache write costs
+// 1.25 times input. Haiku 5.5 doubles past 100k tokens of prompt; its cache read is taken as a tenth of input
+const PRICE: Record<string, { in: number; out: number; read: number }> = {
+  opus: { in: 4, out: 20, read: 0.2 },
+  sonnet: { in: 2, out: 10, read: 0.2 },
+  haiku: { in: 0.1, out: 0.5, read: 0.01 },
+  'haiku-long': { in: 0.5, out: 2.5, read: 0.05 },
+}
+// A rough guess at a reply's length (thinking included) by level, for comparing two models' next request
+const EXPECTED_OUTPUT = [400, 1500, 4000, 8000, 15000]
 // Thanks and greetings are trivial whatever came before: no judge call, no wait
 const SMALL_TALK = /^\s*(thanks?( you)?( so much)?|thx|ty|cheers|hi|hey|hello|yo|nice|cool|great|awesome|lol|haha)[\s.!:)]*$/i
 const rank = (model: string) => (/haiku/.test(model) ? 0 : /sonnet/.test(model) ? 1 : /opus/.test(model) ? 2 : undefined)
@@ -53,6 +63,8 @@ const BRIEF_WINDOW = 60000
 // A new brief once this much conversation is new since the last one, or every BRIEF_EVERY_TURNS turns
 const BRIEF_EVERY_CHARS = 2500
 const BRIEF_EVERY_TURNS = 4
+// The first brief waits for this much conversation, or a second reply
+const BRIEF_START_CHARS = 1500
 // A prompt sent while a brief is still being written waits this long for it, then uses the previous one
 const BRIEF_WAIT_MS = 2500
 const BRIEF_SYSTEM = `You write routing briefs for Clutch, a router that picks how much model power the NEXT user message in a coding session needs.
@@ -100,6 +112,10 @@ let fetching: AsyncGenerator<unknown, unknown> | null = null
 let briefOn = true
 let lastMain: { model: string; at: number } | null = null
 let easyStreak = 0
+let agentsOn = false
+type ProjectRule = { mode?: RouterMode; min?: string; max?: string }
+let project: ProjectRule = {}
+let projectRoot = ''
 let brief = ''
 let briefing: Promise<void> | null = null
 let briefedChars = 0
@@ -382,6 +398,7 @@ async function score($: EngineInterface, state: string): Promise<number | null> 
     const key = (await findKey($))?.key
     if (!key) return null
     d = await post($, JEV_URL, key, { model: JEV, state, questions }, JEV_TIMEOUT_MS)
+    if (typeof d?.usage?.cost === 'number') await addSavings($, { judge: d.usage.cost })
   }
   const s = d?.answers?.difficulty?.score
   return typeof s === 'number' ? s : null
@@ -389,7 +406,7 @@ async function score($: EngineInterface, state: string): Promise<number | null> 
 
 async function classify($: EngineInterface, text: string, mode: RouterMode): Promise<Route | null> {
   const messages = await $.session.messages()
-  if (SMALL_TALK.test(text)) return shift($, { score: 0, level: 0, effort: EFFORTS[0], model: mode === 'auto' ? MODELS[0] : undefined })
+  if (SMALL_TALK.test(text)) return shift($, { score: 0, level: 0, effort: EFFORTS[0], model: mode === 'auto' ? clamp(MODELS[0]!) : undefined })
   // One transcript, so "yes, do it" after a big plan reads as the plan's size (a separate field was ignored)
   const before = messages.filter(m => m.role === 'assistant' && m.text).at(-1)?.text ?? ''
   // The brief is background; the job is still whatever the last message asks for
@@ -401,24 +418,90 @@ async function classify($: EngineInterface, text: string, mode: RouterMode): Pro
   if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${used}: ${s?.toFixed(2) ?? 'no answer'}\n${state}\n`))
   if (s === null) return null
   const level = Math.max(0, Math.min(4, Math.round(s)))
-  return shift($, { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? MODELS[level] : undefined })
+  return shift($, { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? clamp(MODELS[level]!) : undefined })
+}
+
+const FAMILY: Record<string, string> = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' }
+
+// This project's floor and ceiling, if it has them
+function clamp(model: string): string {
+  const r = rank(model) ?? 2
+  if (project.min && r < (rank(project.min) ?? 0)) return FAMILY[project.min]!
+  if (project.max && r > (rank(project.max) ?? 2)) return FAMILY[project.max]!
+  return model
 }
 
 // Keeps the bigger model while moving down would cost more in cache misses than it saves
 async function shift($: EngineInterface, r: Route): Promise<Route> {
   const was = lastMain ? rank(lastMain.model) : undefined
   const now = r.model ? rank(r.model) : undefined
-  if (!lastMain || was === undefined || now === undefined || now >= was) { easyStreak = 0; return r }
+  if (!lastMain || !r.model || was === undefined || now === undefined || now >= was) { easyStreak = 0; return r }
   easyStreak++
   const warm = (await $.clock.now()) - lastMain.at < CACHE_WARM_MS
   if (!warm || easyStreak >= DOWNSHIFT_AFTER) { easyStreak = 0; return r }
+  const context = await contextTokens($)
+  const out = EXPECTED_OUTPUT[r.level] ?? 1500
+  const stay = priceOf(lastMain.model, context)
+  const move = priceOf(r.model, context)
+  const stayCost = context * stay.read + out * stay.out
+  const moveCost = context * move.in * 1.25 + out * move.out
+  if (moveCost <= stayCost) { easyStreak = 0; return r }
   return { ...r, model: lastMain.model, held: true }
+}
+
+function priceOf(model: string, promptTokens: number) {
+  const family = /haiku/.test(model) ? (promptTokens > 100000 ? 'haiku-long' : 'haiku') : /sonnet/.test(model) ? 'sonnet' : 'opus'
+  return PRICE[family]!
+}
+
+// The context the next request reads: what the session last measured, else a guess from the transcript
+async function contextTokens($: EngineInterface): Promise<number> {
+  const measured = await $.session.usage().then(u => u.context.tokens).catch(() => undefined)
+  if (measured) return measured
+  return 20000 + Math.round(textSize(await $.session.messages()) / 4)
+}
+
+// USD for one request's usage, at one model's prices
+function costOf(model: string, u: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }): number {
+  const prompt = u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
+  const p = priceOf(model, prompt)
+  return (u.input_tokens * p.in + u.cache_creation_input_tokens * p.in * 1.25 + u.cache_read_input_tokens * p.read + u.output_tokens * p.out) / 1e6
+}
+
+// --- Savings: every routed main request priced twice, at what ran and at the session's own model ---
+
+type Savings = { since: number; requests: number; actual: number; baseline: number; brief: number; judge: number }
+const emptySavings = async ($: EngineInterface): Promise<Savings> => ({ since: await $.clock.now(), requests: 0, actual: 0, baseline: 0, brief: 0, judge: 0 })
+
+async function addSavings($: EngineInterface, change: Partial<Savings>) {
+  const s = ((await $.store.get('savings')) as Savings | undefined) ?? (await emptySavings($))
+  for (const [k, v] of Object.entries(change)) (s as any)[k] += v
+  await $.store.set('savings', s)
+}
+
+async function savingsReport($: EngineInterface, arg: string): Promise<string> {
+  if (arg === 'reset') { await $.store.set('savings', await emptySavings($)); return 'Savings tally reset.' }
+  const s = (await $.store.get('savings')) as Savings | undefined
+  if (!s || !s.requests) return 'No routed requests counted yet. Clutch counts them while /clutch is on.'
+  const days = Math.max(1, Math.round(((await $.clock.now()) - s.since) / 86400000))
+  const spent = s.actual + s.brief + s.judge
+  const saved = s.baseline - spent
+  const usd = (n: number) => `$${n.toFixed(n < 0.01 ? 5 : n < 1 ? 3 : 2)}`
+  return [
+    `Clutch over the last ${days} day${days === 1 ? '' : 's'}: ${s.requests} requests routed.`,
+    `  On the models Clutch picked:     ${usd(s.actual)}`,
+    `  Session briefs (Haiku):          ${usd(s.brief)}`,
+    `  Judge (Jev on OpenRouter):       ${usd(s.judge)}`,
+    `  The same requests on your own session model: ${usd(s.baseline)}`,
+    saved >= 0 ? `  Saved about ${usd(saved)} (${Math.round((saved / Math.max(s.baseline, 1e-9)) * 100)}%).` : `  Clutch cost about ${usd(-saved)} more, mostly from moving up to a stronger model.`,
+    'At API list prices. The same tokens are priced at both models, so effort savings (fewer tokens) are not counted, and on a Pro or Max plan this is a share of your usage limits rather than money. /clutch savings reset starts over.',
+  ].join('\n')
 }
 
 // --- Commands ---
 
 async function status($: EngineInterface): Promise<string> {
-  const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
+  const mode = await effectiveMode($)
   const lines = [`Clutch is ${mode === 'auto' ? 'on (/clutch: model and effort)' : mode === 'effort' ? 'on (/clutch-effort: effort only)' : 'off'}.`]
   if (localOn) lines.push(`Judge: H2O-Lightning-4B on this computer (/clutch local off switches to Jev).`, localSummary())
   else {
@@ -426,6 +509,8 @@ async function status($: EngineInterface): Promise<string> {
     lines.push('Judge: Jev 1.14 on OpenRouter (/clutch local runs one on this computer instead).')
     lines.push(found ? `Key: from ${found.from}, ${await checkKey($, found.key)}.` : 'Key: none yet. /clutch key saves one, or /clutch local skips OpenRouter.')
   }
+  if (project.mode || project.min || project.max) lines.push(`This project: ${[project.mode ? `mode ${project.mode}` : '', project.min ? `at least ${project.min}` : '', project.max ? `at most ${project.max}` : ''].filter(Boolean).join(', ')}.`)
+  lines.push(`Subagents: ${agentsOn ? 'routed (general-purpose ones)' : 'not routed'}.`)
   lines.push(!briefOn ? 'Session brief: off (/clutch brief on turns it on).' : briefing
     ? 'Session brief: Haiku is refreshing it in the background.'
     : brief ? `Session brief: ready (${brief.split(/\s+/).length} words), refreshed in the background every few turns.` : 'Session brief: none yet (written in the background after your first reply).')
@@ -444,6 +529,9 @@ const HELP = [
   '  /clutch key        save the OpenRouter key on your clipboard (for Jev)',
   '  /clutch brief      show the session brief Haiku keeps in the background',
   '  /clutch brief off  stop the brief to save usage (/clutch brief on turns it back on)',
+  '  /clutch savings    what Clutch saved so far, at API prices',
+  '  /clutch project    settings for this project only (mode, min and max model)',
+  '  /clutch agents on  also pick the model for general-purpose subagents (off by default)',
   '  /clutch status     check the judge, the key, the mode and the last pick',
 ].join('\n')
 
@@ -478,6 +566,15 @@ async function runCommand($: EngineInterface, args: string, on: RouterMode): Pro
   if (word === 'key') return saveKey($)
   if (word === 'local') return localCommand($, parts[1] ?? 'on')
   if (word === 'status') return status($)
+  if (word === 'savings') return savingsReport($, parts[1] ?? '')
+  if (word === 'project') return projectCommand($, parts.slice(1))
+  if (word === 'agents' && (parts[1] === 'on' || parts[1] === 'off')) {
+    agentsOn = parts[1] === 'on'
+    await $.store.set('agents', agentsOn)
+    return agentsOn
+      ? 'Subagents on: a general-purpose helper agent with no model of its own gets one picked for its task (in /clutch mode). Agents that name their model keep it.'
+      : 'Subagents off: helper agents keep the model they would get without Clutch.'
+  }
   if (word === 'brief' && (parts[1] === 'off' || parts[1] === 'on')) {
     briefOn = parts[1] === 'on'
     await $.store.set('brief', briefOn)
@@ -548,6 +645,7 @@ async function writeBrief($: EngineInterface, messages: Row[]) {
     system: BRIEF_SYSTEM,
     prompt: (brief ? `Previous brief (older context, may be stale):\n${brief}\n\n` : '') + `Newest conversation:\n${recent}`,
   })
+  if (r.usage) await addSavings($, { brief: costOf(BRIEF_MODEL, r.usage) })
   if (r.isAnswered && r.text.trim()) {
     brief = r.text.trim().slice(0, 1200)
     await update($, briefAtom, () => brief)
@@ -570,6 +668,8 @@ async function maybeBrief($: EngineInterface) {
   const messages = await $.session.messages()
   if (!Array.isArray(messages) || !messages.length) return
   const size = textSize(messages)
+  // A short session needs no brief yet: the last reply already says everything
+  if (!brief && size < BRIEF_START_CHARS && turnsSinceBrief < 2) return
   if (brief && size - briefedChars < BRIEF_EVERY_CHARS && turnsSinceBrief < BRIEF_EVERY_TURNS) return
   const run = briefNow($, messages, size)
   briefing = run
@@ -577,6 +677,37 @@ async function maybeBrief($: EngineInterface) {
   await run
   if (briefing === run) briefing = null
   paint($)
+}
+
+// This project's own mode wins over the global one
+async function effectiveMode($: EngineInterface): Promise<RouterMode> {
+  return project.mode ?? (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
+}
+
+async function loadProject($: EngineInterface) {
+  projectRoot = await $.session.root().catch(() => '')
+  const all = ((await $.store.get('projects')) as Record<string, ProjectRule> | undefined) ?? {}
+  project = all[projectRoot] ?? {}
+}
+
+async function projectCommand($: EngineInterface, parts: string[]): Promise<string> {
+  const [what = '', value = ''] = parts
+  const all = ((await $.store.get('projects')) as Record<string, ProjectRule> | undefined) ?? {}
+  const rule: ProjectRule = { ...(all[projectRoot] ?? {}) }
+  const where = projectRoot.split('/').filter(Boolean).pop() ?? 'this project'
+  if (['auto', 'effort', 'off'].includes(what)) rule.mode = what as RouterMode
+  else if ((what === 'min' || what === 'max') && FAMILY[value]) rule[what] = value
+  else if (what === 'reset') { delete all[projectRoot]; await $.store.set('projects', all); project = {}; paint($); return `${where}: back to your global Clutch settings.` }
+  else if (what) return [
+    'Settings for this project only (the folder Claude Code started in):',
+    '  /clutch project auto | effort | off   the mode here, whatever the global one is',
+    '  /clutch project min sonnet            never go below Sonnet here (haiku, sonnet or opus)',
+    '  /clutch project max sonnet            never go above Sonnet here',
+    '  /clutch project reset                 use the global settings again',
+  ].join('\n')
+  if (what) { all[projectRoot] = rule; await $.store.set('projects', all); project = rule; paint($) }
+  const bits = [rule.mode ? `mode ${rule.mode}` : 'global mode', rule.min ? `at least ${rule.min}` : '', rule.max ? `at most ${rule.max}` : ''].filter(Boolean)
+  return `${where}: ${bits.join(', ')}.${what ? '' : ' /clutch project help lists the options.'}`
 }
 
 // The route a prompt was given, until its turn starts; then each main turn's route by turn id
@@ -591,6 +722,8 @@ export const register: Register = on => {
     const saved = (await $.store.get('mode')) as RouterMode | undefined
     localOn = (await $.store.get('local')) === true
     briefOn = (await $.store.get('brief')) !== false
+    agentsOn = (await $.store.get('agents')) === true
+    await loadProject($)
     if (saved) await update($, modeAtom, () => saved)
     shown = { mode: saved ?? 'off', route: null }
     paint($)
@@ -609,7 +742,7 @@ export const register: Register = on => {
   on('command.run', { command: 'clutch-effort' }, async ($, e) => ({ text: await runCommand($, e.args, 'effort') }))
 
   on('prompt.submit', async ($, e, next) => {
-    const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
+    const mode = await effectiveMode($)
     // sdk: the desktop app's Code tab sends typed prompts through the SDK
     const isPerson = e.origin.kind === 'composer' || e.origin.kind === 'bridge' || e.origin.kind === 'sdk'
     if (mode === 'off' || e.command || e.isMeta || !isPerson || !e.text.trim()) return next(e)
@@ -627,6 +760,16 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e)) // a router that breaks never holds a prompt back
 
+  // Opt-in: a general-purpose subagent with no model of its own gets one picked for its task
+  on('agent.spawn', async ($, e, next) => {
+    if (!agentsOn || e.model || e.fork || e.isTeammate || e.workflow || e.subagentType !== 'general-purpose') return next(e)
+    if ((await effectiveMode($)) !== 'auto') return next(e)
+    const s = await score($, `A coding assistant hands this task to a helper agent.\n\nUser: ${e.prompt.slice(0, 8000)}`).catch(() => null)
+    if (s === null) return next(e)
+    const level = Math.max(0, Math.min(4, Math.round(s)))
+    return next({ ...e, model: clamp(MODELS[level]!) })
+  })
+
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined && pending) {
       routes.set(e.turnId, pending)
@@ -640,13 +783,15 @@ export const register: Register = on => {
     const route = e.agentId === undefined ? routes.get(e.turnId) : undefined
     if (e.agentId === undefined) lastMain = { model: route?.model ?? e.model, at: await $.clock.now() }
     if (!route) return yield* next(e)
-    return yield* next({ ...e, effort: route.effort, ...(route.model ? { model: route.model } : {}) })
+    const res = yield* next({ ...e, effort: route.effort, ...(route.model ? { model: route.model } : {}) })
+    if (res?.usage) await addSavings($, { requests: 1, actual: costOf(res.usage.model, res.usage), baseline: costOf(e.model, res.usage) })
+    return res
   })
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e)
     routes.delete(e.turnId)
-    const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
+    const mode = await effectiveMode($)
     // Not awaited: the brief is written while the user reads the reply, ready for their next prompt
     if (mode !== 'off' && briefOn) void maybeBrief($).catch(() => {})
     return next(e)

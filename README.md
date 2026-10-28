@@ -56,6 +56,9 @@ Something not working? Type `/clutch status`. It tells you whether your key work
 | `/clutch key` | Saves the OpenRouter key on your clipboard (for Jev). |
 | `/clutch brief` | Shows the session brief Haiku keeps in the background. |
 | `/clutch brief off` | Stops the brief to save usage (`/clutch brief on` turns it back on). |
+| `/clutch savings` | What Clutch has saved so far, at API prices. |
+| `/clutch project ...` | Settings for this project only: its own mode, and a lowest or highest model. |
+| `/clutch agents on` | Also picks the model for general-purpose subagents (off by default). |
 | `/clutch status` | Shows the judge, the download or key, the mode and the last pick. |
 | `/clutch help` | Lists these commands. |
 
@@ -166,11 +169,24 @@ Type `/clutch brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file`
 
 Clutch is built to spend less, not just to pick well:
 
-- **Cache-aware shifting.** Claude Code keeps your conversation in a prompt cache, which is read back at a tenth of the normal price, but only by the same model. Changing model means reading everything again at full price. So when the judge asks for a smaller model in the middle of hard work, Clutch keeps the bigger one (shown as `opus (held)` in the status line, with low effort) until three easy messages in a row, or until the cache has gone cold after 5 minutes. One "what's 2+2" no longer throws the cache away; a real change of pace still moves down. Moving up to a stronger model always happens at once.
+- **Cost-aware shifting.** Claude Code keeps your conversation in a prompt cache, which is read back cheaply, but only by the same model. Changing model means reading everything again at full price. Before moving to a smaller model, Clutch prices the next request both ways at API list prices: it moves when the smaller model is cheaper even after that re-read (Haiku 5.5 almost always is), and otherwise keeps the bigger one (shown as `opus (held)` in the status line, at low effort) until three easy messages in a row or until the cache has gone cold after 5 minutes. Moving up to a stronger model always happens at once.
+- **`/clutch savings`** shows what Clutch has spent and saved so far: every routed request priced at the model Clutch picked and at your own session model, plus the briefs and the judge. In a test session it came to 58% less. On a Pro or Max plan, read it as a share of your usage limits.
+- **Subagents, if you want (`/clutch agents on`).** Helper agents are often the biggest hidden spend. With this on, a general-purpose subagent that has no model of its own gets one picked for its task, so a quick lookup runs on Haiku. Agents that name their own model keep it. Off by default.
 - **No judge for small talk.** "thanks", "hi", "nice" and the like go straight to the lightest setting, with no judge call and no wait.
 - **`/clutch-effort`** never changes the model at all, so the cache is never lost. It is the cheapest mode on very long conversations.
-- **`/clutch brief off`** saves the Haiku calls (see above).
+- **`/clutch brief off`** saves the Haiku calls (see above). Short sessions skip the brief anyway until there is something to summarise.
 - **The local judge** costs nothing per message.
+
+## Per-project settings
+
+Some projects deserve their own rules. Each setting applies only to the folder Claude Code starts in:
+
+```
+/clutch project effort        effort only here, whatever the global mode is
+/clutch project min sonnet    never below Sonnet here (for example production code)
+/clutch project max sonnet    never above Sonnet here (for example a scratch repo)
+/clutch project reset         back to the global settings
+```
 
 ## Benchmark
 

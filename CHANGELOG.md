@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+- Cost-aware shifting: before moving to a smaller model, Clutch prices the next request both ways at API list prices (Opus 5.5, Sonnet 5.5, Haiku 5.5, cache reads and writes) and moves when it is cheaper even after losing the prompt cache. Haiku nearly always is, so easy messages reach it at once; Opus to Sonnet still waits for three easy messages in a row or a cold cache.
+- `/clutch savings`: every routed request priced at the model Clutch picked and at the session's own model, plus the briefs and the judge. `/clutch savings reset` starts over.
+- `/clutch project`: per-project mode and a lowest or highest model.
+- `/clutch agents on`: picks the model for general-purpose subagents that have none of their own. Off by default.
+- The first brief waits until a session has some length.
+
 ## 1.4.0
 
 Spends less.
