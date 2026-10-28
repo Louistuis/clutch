@@ -15,6 +15,8 @@ export type Route = {
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** set only by /clutch */
   model?: string
+  /** the judge asked for a smaller model, but the bigger one was kept for its warm prompt cache */
+  held?: boolean
 }
 
 declare module 'claude-code' {

@@ -55,6 +55,7 @@ Something not working? Type `/clutch status`. It tells you whether your key work
 | `/clutch local off` | Rates messages with Jev on OpenRouter instead. |
 | `/clutch key` | Saves the OpenRouter key on your clipboard (for Jev). |
 | `/clutch brief` | Shows the session brief Haiku keeps in the background. |
+| `/clutch brief off` | Stops the brief to save usage (`/clutch brief on` turns it back on). |
 | `/clutch status` | Shows the judge, the download or key, the mode and the last pick. |
 | `/clutch help` | Lists these commands. |
 
@@ -136,7 +137,17 @@ OPEN:  unresolved problems, errors or decisions
 WEIGHT: what makes the work hard or easy
 ```
 
-It runs through your own Claude Code session (the same account and credentials), only while Clutch is on, and only for the main conversation, not subagents.
+**It never touches your conversation.** The brief is written by a separate, one-off Haiku call that runs silently in the background: it is not a message in your session, it adds nothing to Claude's context, it never interrupts or slows down a reply, and Claude never sees it. Only the judge reads it. Its single purpose is to give the judge more context, so its pick of model and effort is more precise in a long session.
+
+It uses your own Claude account, only while Clutch is on, and only for the main conversation, not subagents.
+
+**It is on by default, and you can turn it off.** Each refresh is one small Haiku call, so it draws a little usage. If you would rather save that:
+
+```
+/clutch brief off
+```
+
+The judge then sees only your message and the end of Claude's last reply, which is still accurate for most messages; it mostly loses track of "ok do it" after a long plan. `/clutch brief on` turns it back on.
 
 From a live test session (Opus as the session model):
 
@@ -147,9 +158,19 @@ From a live test session (Opus as the session model):
 | "ok write the full fix: server endpoint, migration and the swift retry queue" | Opus |
 | "thanks!" | Sonnet |
 
-The last one shows the trade-off: in a heavy session a bare "thanks!" scored 0.53, just over the line between trivial and simple. Clutch errs towards a stronger model rather than a weaker one.
+The last one shows the trade-off: in a heavy session a bare "thanks!" scored 0.53, just over the line between trivial and simple. (Since 1.4.0, thanks and greetings skip the judge entirely; see below.)
 
 Type `/clutch brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file` before starting Claude Code to append every score, the exact text the judge saw and each brief rewrite to that file.
+
+## Saving usage
+
+Clutch is built to spend less, not just to pick well:
+
+- **Cache-aware shifting.** Claude Code keeps your conversation in a prompt cache, which is read back at a tenth of the normal price, but only by the same model. Changing model means reading everything again at full price. So when the judge asks for a smaller model in the middle of hard work, Clutch keeps the bigger one (shown as `opus (held)` in the status line, with low effort) until three easy messages in a row, or until the cache has gone cold after 5 minutes. One "what's 2+2" no longer throws the cache away; a real change of pace still moves down. Moving up to a stronger model always happens at once.
+- **No judge for small talk.** "thanks", "hi", "nice" and the like go straight to the lightest setting, with no judge call and no wait.
+- **`/clutch-effort`** never changes the model at all, so the cache is never lost. It is the cheapest mode on very long conversations.
+- **`/clutch brief off`** saves the Haiku calls (see above).
+- **The local judge** costs nothing per message.
 
 ## Benchmark
 
@@ -186,11 +207,11 @@ Each run prints accuracy, a confusion matrix and the misses.
 ## Limits
 
 - The model picker in the UI keeps showing your session's model, because mods cannot change it. The status line shows the model and effort the router actually used.
-- Switching models skips the prompt cache, so `/clutch` can cost more than `/clutch-effort` on long conversations. If cost matters more than model choice, use `/clutch-effort`.
+- Switching models skips the prompt cache. Cache-aware shifting avoids the pointless switches, but a real move still pays it once, so `/clutch-effort` stays the cheapest choice on very long conversations.
 - If the judge does not answer in time (2.5 s for Jev, 6 s for the local one) or returns an error, that turn keeps your session's model and effort, and the status line says so.
 - The mode is stored once and shared by all your sessions. Running `/clutch off` in one session turns it off in the others for their next prompt.
 - The judge scores difficulty from text. The brief tells it what the session is about, but it still cannot read your code.
-- Refreshing the brief costs one Haiku call every few turns on your Claude account while Clutch is on.
+- Refreshing the brief costs one Haiku call every few turns on your Claude account while Clutch is on (`/clutch brief off` stops it).
 
 ## Privacy
 

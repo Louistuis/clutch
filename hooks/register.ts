@@ -36,6 +36,17 @@ const MODEL = {
 const MIN_MEMORY = 8 * 2 ** 30
 const MIN_FREE_DISK = MODEL.bytes + 2 ** 30
 
+// Cache-aware shifting. A model change makes the API read the whole context (Claude Code's system prompt
+// and tools, then the conversation) again at full price, while staying put reads it from the prompt cache
+// at a tenth of that. One easy message in the middle of hard work is cheaper on the big model; a run of
+// them pays for the move. So moving down waits for DOWNSHIFT_AFTER easy picks in a row, unless the cache
+// has gone cold anyway. Moving up always happens at once.
+const DOWNSHIFT_AFTER = 3
+const CACHE_WARM_MS = 5 * 60 * 1000
+// Thanks and greetings are trivial whatever came before: no judge call, no wait
+const SMALL_TALK = /^\s*(thanks?( you)?( so much)?|thx|ty|cheers|hi|hey|hello|yo|nice|cool|great|awesome|lol|haha)[\s.!:)]*$/i
+const rank = (model: string) => (/haiku/.test(model) ? 0 : /sonnet/.test(model) ? 1 : /opus/.test(model) ? 2 : undefined)
+
 const BRIEF_MODEL = 'haiku'
 // The newest conversation that goes to Haiku, in characters (~15k tokens), newest kept first
 const BRIEF_WINDOW = 60000
@@ -86,6 +97,9 @@ let local: { phase: LocalPhase; percent: number; note: string } = { phase: 'idle
 let localSetup: Promise<void> | null = null
 let server: AsyncGenerator<unknown, unknown> | null = null
 let fetching: AsyncGenerator<unknown, unknown> | null = null
+let briefOn = true
+let lastMain: { model: string; at: number } | null = null
+let easyStreak = 0
 let brief = ''
 let briefing: Promise<void> | null = null
 let briefedChars = 0
@@ -105,7 +119,8 @@ function paint($: EngineInterface) {
   const tail = judgeNote + (briefing ? ' · ✎ brief' : brief ? ' · ctx' : '')
   if (!r) return $.ui.status(`${name} engaged${tail}`)
   if (r.score < 0) return $.ui.status(`${name}: no judge yet, session settings${tail}`)
-  $.ui.status(`${name} → ${r.model ? short(r.model) + ' · ' : ''}${r.effort} · ${r.score.toFixed(1)}/4${tail}`)
+  const model = r.model ? `${short(r.model)}${r.held ? ' (held)' : ''} · ` : ''
+  $.ui.status(`${name} → ${model}${r.effort} · ${r.score.toFixed(1)}/4${tail}`)
 }
 
 async function home($: EngineInterface): Promise<string | null> {
@@ -373,8 +388,10 @@ async function score($: EngineInterface, state: string): Promise<number | null> 
 }
 
 async function classify($: EngineInterface, text: string, mode: RouterMode): Promise<Route | null> {
+  const messages = await $.session.messages()
+  if (SMALL_TALK.test(text)) return shift($, { score: 0, level: 0, effort: EFFORTS[0], model: mode === 'auto' ? MODELS[0] : undefined })
   // One transcript, so "yes, do it" after a big plan reads as the plan's size (a separate field was ignored)
-  const before = (await $.session.messages()).filter(m => m.role === 'assistant' && m.text).at(-1)?.text ?? ''
+  const before = messages.filter(m => m.role === 'assistant' && m.text).at(-1)?.text ?? ''
   // The brief is background; the job is still whatever the last message asks for
   const state = (brief ? `Background on the session (it does not set the job size; the user's last message does):\n${brief}\n\n` : '')
     + (before ? `Assistant: ${before.slice(-1500)}\n\n` : '') + `User: ${text.slice(0, 8000)}`
@@ -384,7 +401,18 @@ async function classify($: EngineInterface, text: string, mode: RouterMode): Pro
   if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${used}: ${s?.toFixed(2) ?? 'no answer'}\n${state}\n`))
   if (s === null) return null
   const level = Math.max(0, Math.min(4, Math.round(s)))
-  return { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? MODELS[level] : undefined }
+  return shift($, { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? MODELS[level] : undefined })
+}
+
+// Keeps the bigger model while moving down would cost more in cache misses than it saves
+async function shift($: EngineInterface, r: Route): Promise<Route> {
+  const was = lastMain ? rank(lastMain.model) : undefined
+  const now = r.model ? rank(r.model) : undefined
+  if (!lastMain || was === undefined || now === undefined || now >= was) { easyStreak = 0; return r }
+  easyStreak++
+  const warm = (await $.clock.now()) - lastMain.at < CACHE_WARM_MS
+  if (!warm || easyStreak >= DOWNSHIFT_AFTER) { easyStreak = 0; return r }
+  return { ...r, model: lastMain.model, held: true }
 }
 
 // --- Commands ---
@@ -398,11 +426,11 @@ async function status($: EngineInterface): Promise<string> {
     lines.push('Judge: Jev 1.14 on OpenRouter (/clutch local runs one on this computer instead).')
     lines.push(found ? `Key: from ${found.from}, ${await checkKey($, found.key)}.` : 'Key: none yet. /clutch key saves one, or /clutch local skips OpenRouter.')
   }
-  lines.push(briefing
+  lines.push(!briefOn ? 'Session brief: off (/clutch brief on turns it on).' : briefing
     ? 'Session brief: Haiku is refreshing it in the background.'
     : brief ? `Session brief: ready (${brief.split(/\s+/).length} words), refreshed in the background every few turns.` : 'Session brief: none yet (written in the background after your first reply).')
   const r = (await $.state.get({ plugin: 'clutch', key: 'last' })).value as Route | null
-  if (r && r.score >= 0) lines.push(`Last pick: ${r.model ? short(r.model) + ', ' : ''}${r.effort} effort (score ${r.score.toFixed(2)} of 4).`)
+  if (r && r.score >= 0) lines.push(`Last pick: ${r.model ? short(r.model) + ', ' : ''}${r.effort} effort (score ${r.score.toFixed(2)} of 4)${r.held ? '; the model was held to keep the prompt cache' : ''}.`)
   return lines.join('\n')
 }
 
@@ -415,6 +443,7 @@ const HELP = [
   '  /clutch local off  rate messages with Jev on OpenRouter instead',
   '  /clutch key        save the OpenRouter key on your clipboard (for Jev)',
   '  /clutch brief      show the session brief Haiku keeps in the background',
+  '  /clutch brief off  stop the brief to save usage (/clutch brief on turns it back on)',
   '  /clutch status     check the judge, the key, the mode and the last pick',
 ].join('\n')
 
@@ -449,6 +478,16 @@ async function runCommand($: EngineInterface, args: string, on: RouterMode): Pro
   if (word === 'key') return saveKey($)
   if (word === 'local') return localCommand($, parts[1] ?? 'on')
   if (word === 'status') return status($)
+  if (word === 'brief' && (parts[1] === 'off' || parts[1] === 'on')) {
+    briefOn = parts[1] === 'on'
+    await $.store.set('brief', briefOn)
+    if (!briefOn) brief = ''
+    paint($)
+    return briefOn
+      ? 'Session brief on: every few replies, Haiku quietly writes a short summary for the judge, outside your conversation.'
+      : 'Session brief off: the judge sees only your message and the end of the last reply. Saves the Haiku calls; picks are a little less precise in long sessions.'
+  }
+  if (word === 'brief' && !briefOn) return 'The session brief is off. /clutch brief on turns it back on.'
   if (word === 'brief') return brief ? `Session brief${briefing ? ' (a fresh one is being written)' : ''}:\n${brief}` : 'No session brief yet. Haiku writes one in the background after your first reply while Clutch is on.'
   if (word === 'help' || word === '?') return HELP
   if (word) return `Unknown option "${word}".\n${HELP}`
@@ -462,7 +501,7 @@ async function runCommand($: EngineInterface, args: string, on: RouterMode): Pro
   await setMode($, on)
   const who = localOn ? 'the model on this computer' : 'Jev'
   return intro + (on === 'auto'
-    ? `Clutch engaged: ${who} picks the model and effort for every message, helped by a session brief Haiku keeps in the background. /clutch off disengages.`
+    ? `Clutch engaged: ${who} picks the model and effort for every message${briefOn ? ', helped by a session brief Haiku keeps silently in the background (outside your conversation)' : ''}. /clutch off disengages.`
     : `Clutch effort engaged: ${who} picks the effort for every message, your model stays. /clutch off disengages.`)
 }
 
@@ -495,7 +534,8 @@ function transcript(messages: Row[]): string {
   return parts.reverse().join('\n\n')
 }
 
-const conversationSize = (messages: Row[]) => messages.reduce((n, m) => n + (isCommand(m) ? 0 : m.text.length + m.toolUses.length * 40), 0)
+// Conversation text, for how often the brief is refreshed
+const textSize = (messages: Row[]) => messages.reduce((n, m) => n + (isCommand(m) ? 0 : m.text.length + m.toolUses.length * 40), 0)
 
 async function writeBrief($: EngineInterface, messages: Row[]) {
   const recent = transcript(messages)
@@ -529,7 +569,7 @@ async function maybeBrief($: EngineInterface) {
   if (briefing) return
   const messages = await $.session.messages()
   if (!Array.isArray(messages) || !messages.length) return
-  const size = conversationSize(messages)
+  const size = textSize(messages)
   if (brief && size - briefedChars < BRIEF_EVERY_CHARS && turnsSinceBrief < BRIEF_EVERY_TURNS) return
   const run = briefNow($, messages, size)
   briefing = run
@@ -550,6 +590,7 @@ export const register: Register = on => {
     await $.command.register({ name: 'clutch-effort', description: 'Clutch: pick only the effort, your model stays (/clutch off to stop)' })
     const saved = (await $.store.get('mode')) as RouterMode | undefined
     localOn = (await $.store.get('local')) === true
+    briefOn = (await $.store.get('brief')) !== false
     if (saved) await update($, modeAtom, () => saved)
     shown = { mode: saved ?? 'off', route: null }
     paint($)
@@ -597,6 +638,7 @@ export const register: Register = on => {
   on('turn.step', async function* ($, e, next) {
     // Main-loop requests only: subagents keep the model and effort they were given
     const route = e.agentId === undefined ? routes.get(e.turnId) : undefined
+    if (e.agentId === undefined) lastMain = { model: route?.model ?? e.model, at: await $.clock.now() }
     if (!route) return yield* next(e)
     return yield* next({ ...e, effort: route.effort, ...(route.model ? { model: route.model } : {}) })
   })
@@ -606,7 +648,7 @@ export const register: Register = on => {
     routes.delete(e.turnId)
     const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
     // Not awaited: the brief is written while the user reads the reply, ready for their next prompt
-    if (mode !== 'off') void maybeBrief($).catch(() => {})
+    if (mode !== 'off' && briefOn) void maybeBrief($).catch(() => {})
     return next(e)
   })
 }

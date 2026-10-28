@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0
+
+Spends less.
+
+- Cache-aware shifting: a smaller model is used only after three easy messages in a row, or once the prompt cache has gone cold (5 minutes). Until then the bigger model is kept at low effort, shown as `(held)`, because re-reading the conversation on a new model costs more than one easy reply saves. Moving up still happens at once.
+- Thanks and greetings skip the judge: no call, no wait.
+- `/clutch brief off` and `/clutch brief on`: the background brief is on by default and can now be turned off to save its Haiku calls.
+- The README says plainly that the brief is a separate background call that never enters your conversation or Claude's context.
+
 ## 1.3.1
 
 The commands are named after the plugin.
