@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- `/auto key` no longer saves a key that OpenRouter refuses; it says so and asks you to copy the whole key again. A key it cannot check (offline) is still saved.
+
 ## 1.1.0
 
 The router is now called Clutch, and it installs as `clutch@clutch` from `Louistuis/clutch`.

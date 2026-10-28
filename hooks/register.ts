@@ -99,7 +99,7 @@ async function clipboard($: EngineInterface): Promise<string> {
 async function checkKey($: EngineInterface, key: string): Promise<string> {
   const res = await $.http.fetch('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${key}` } }).catch(() => null)
   if (!res) return 'could not reach OpenRouter to check it'
-  if (res.status === 401) return 'OpenRouter does not accept it (401): copy the whole key again'
+  if (res.status === 401) return 'OpenRouter does not accept it (401)'
   if (!res.ok) return `OpenRouter answered ${res.status}`
   const d = JSON.parse(res.text).data ?? {}
   return d.limit_remaining != null ? `works, $${Number(d.limit_remaining).toFixed(2)} left on its limit` : 'works'
@@ -110,12 +110,15 @@ async function saveKey($: EngineInterface): Promise<string> {
   if (!/^sk-or-[A-Za-z0-9_-]{20,}$/.test(key)) {
     return 'Your clipboard does not hold an OpenRouter key (they start with "sk-or-"). Copy the key from https://openrouter.ai/keys, then type /auto key again.'
   }
+  // A key OpenRouter refuses is not saved; one it could not check (offline) is
+  const check = await checkKey($, key)
+  if (check.includes('401')) return `Not saved: ${check}. Make sure you copied the whole key from https://openrouter.ai/keys, then type /auto key again.`
   const path = await keyPath($)
   if (!path) return 'Could not find your home folder to save the key in. Set OPENROUTER_API_KEY instead (see the README).'
   await $.fs.write(path, key + '\n')
   // Owner-only, where the system has chmod (Windows keeps the folder's own permissions)
   await $.process.run(['chmod', '600', path]).catch(() => null)
-  return `Key saved to ~/${KEY_FILE} (${await checkKey($, key)}). Type /auto to start Clutch.`
+  return `Key saved to ~/${KEY_FILE} (${check}). Type /auto to start Clutch.`
 }
 
 async function status($: EngineInterface): Promise<string> {
