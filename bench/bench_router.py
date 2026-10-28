@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Benchmarks the auto-router's classifier alone: Jev 1.14 scores labelled prompts, no LLM answers anything.
+"""Benchmarks Clutch's judge alone: the judge scores labelled prompts, no LLM answers anything.
 
 Same state, question and levels as hooks/register.ts. Labels (0-4) are hand-assigned by the author, so they carry
-one person's judgement. Needs an OpenRouter key in $OPENROUTER_API_KEY or ~/.config/openrouter.key.
-Usage: bench_router.py [--out results.json]
+one person's judgement.
+
+  bench_router.py                                  Jev 1.14 on OpenRouter ($OPENROUTER_API_KEY or ~/.config/openrouter.key)
+  bench_router.py --judge local --url URL          a llama.cpp /v1/systemone endpoint
+  bench_router.py --judge chat --url URL --model M  any OpenAI-compatible chat server (Ollama, LM Studio, llama.cpp)
+  --key-file F   a key for a local server that wants one;  --out results.json   save the scores
 """
-import argparse, concurrent.futures as cf, json, os, statistics, time, urllib.request
+import argparse, concurrent.futures as cf, json, os, re, statistics, time, urllib.request
 
 URL = "https://openrouter.ai/api/alpha/decisions"
 def load_key():
+    """The OpenRouter key, for the Jev judge."""
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if key:
         return key
@@ -18,7 +23,8 @@ def load_key():
         raise SystemExit("Set OPENROUTER_API_KEY or put your key in ~/.config/openrouter.key")
 
 
-KEY = load_key()
+KEY = None
+JUDGE = {"kind": "jev"}
 LEVELS = [
     "trivial: chat or a quick fact",
     "simple: one small edit or command",
@@ -97,16 +103,37 @@ CASES = [
 ]
 
 
+CHAT_SYSTEM = ("You rate how much work a coding assistant's next job is. Reply with one number from 0 to 4 and nothing else (one decimal allowed).\n"
+               + "\n".join(f"{i} = {l}" for i, l in enumerate(LEVELS)))
+QUESTION = "How much work is the job the user's last message asks for (including anything it agrees to)?"
+
+
+def post(url, body):
+    headers = {"Content-Type": "application/json", "User-Agent": "clutch-bench/1"}
+    if KEY: headers["Authorization"] = "Bearer " + KEY
+    with urllib.request.urlopen(urllib.request.Request(url, json.dumps(body).encode(), headers), timeout=120) as r:
+        return json.load(r)
+
+
 def ask(case):
+    """Same request as register.ts sends for each judge kind."""
     text, before, _ = case
     state = (f"Assistant: {before[-1500:]}\n\n" if before else "") + f"User: {text[:8000]}"
-    body = json.dumps({"model": "typesafe/jev-1.14", "state": state, "questions": {"difficulty": {
-        "type": "score", "instructions": "How much work is the job the user's last message asks for (including anything it agrees to)?",
-        "criteria": LEVELS}}}).encode()
-    req = urllib.request.Request(URL, body, {"Content-Type": "application/json", "Authorization": "Bearer " + KEY, "User-Agent": "router-bench/1"})
     t = time.time()
-    with urllib.request.urlopen(req, timeout=60) as r:
-        d = json.load(r)
+    if JUDGE["kind"] == "chat":
+        messages = [{"role": "system", "content": CHAT_SYSTEM}, {"role": "user", "content": f"{state}\n\n{QUESTION} /no_think"}]
+        ollama = JUDGE["url"].rstrip("/").endswith("/api/chat")
+        d = post(JUDGE["url"], {"model": JUDGE["model"], "messages": messages, "stream": False, "think": False, "options": {"temperature": 0, "num_predict": 16}} if ollama
+                 else {"model": JUDGE["model"], "messages": messages, "stream": False, "temperature": 0, "max_tokens": 16, "chat_template_kwargs": {"enable_thinking": False}})
+        m = d["message"] if ollama else d["choices"][0]["message"]
+        reply = re.sub(r"<think>[\s\S]*?</think>", "", m.get("content") or m.get("reasoning_content") or m.get("reasoning") or m.get("thinking") or "")
+        n = re.search(r"(?:^|[^\d.])([0-4](?:\.\d+)?)(?![\d.])", reply)
+        score = float(n.group(1)) if n else 2.0  # no number: counted as a middle guess, and reported below
+        if not n: print(f"  no number for {text[:50]!r}: {reply[:60]!r}")
+        return score, (time.time() - t) * 1000, 0
+    body = {"state": state, "questions": {"difficulty": {"type": "score", "instructions": QUESTION, "criteria": LEVELS}}}
+    if JUDGE["kind"] == "jev": body["model"] = "typesafe/jev-1.14"
+    d = post(JUDGE["url"], body)
     return d["answers"]["difficulty"]["score"], (time.time() - t) * 1000, (d.get("usage") or {}).get("cost") or 0
 
 
@@ -135,33 +162,46 @@ def report(name, pred, gold):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--out"); args = ap.parse_args()
+    global KEY
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--judge", choices=["jev", "local", "chat"], default="jev")
+    ap.add_argument("--url"); ap.add_argument("--model"); ap.add_argument("--key-file"); ap.add_argument("--out")
+    args = ap.parse_args()
+    if args.judge == "jev":
+        JUDGE.update(kind="jev", url=URL); KEY = load_key()
+    else:
+        if not args.url or (args.judge == "chat" and not args.model):
+            raise SystemExit("--judge local needs --url; --judge chat needs --url and --model")
+        JUDGE.update(kind=args.judge, url=args.url, model=args.model)
+        KEY = open(os.path.expanduser(args.key_file)).read().strip() if args.key_file else None
+    name = {"jev": "Jev 1.14", "local": f"local decision model ({args.url})", "chat": f"{args.model} (chat)"}[args.judge]
     t0 = time.time()
-    with cf.ThreadPoolExecutor(8) as ex:
+    # A local server works through one prompt at a time
+    with cf.ThreadPoolExecutor(8 if args.judge == "jev" else 1) as ex:
         res = list(ex.map(ask, CASES))
     gold = [c[2] for c in CASES]
     scores = [r[0] for r in res]
     pred = [max(0, min(4, round(s))) for s in scores]
-    print(f"{len(CASES)} prompts, Jev 1.14, wall {time.time() - t0:.1f} s, cost ${sum(r[2] for r in res):.5f}, "
+    print(f"{len(CASES)} prompts, {name}, wall {time.time() - t0:.1f} s, cost ${sum(r[2] for r in res):.5f}, "
           f"latency p50 {statistics.median(r[1] for r in res):.0f} ms, max {max(r[1] for r in res):.0f} ms\n")
-    report("Jev (router as shipped)", pred, gold)
+    report(name[:28], pred, gold)
     # Baseline with no model at all: prompt length, cut at the length quantiles of this same set (flattered: tuned on it)
     lens = [len(c[0]) + (len(c[1]) if c[1] else 0) for c in CASES]
     cuts = [sorted(lens)[int(len(lens) * q)] for q in (0.2, 0.4, 0.6, 0.8)]
     base = [sum(l > c for c in cuts) for l in lens]
     report("length only (no model)", base, gold)
-    print(f"\nrank correlation with the labels: Jev {spearman(scores, gold):.2f}, length {spearman(lens, gold):.2f}")
+    print(f"\nrank correlation with the labels: judge {spearman(scores, gold):.2f}, length {spearman(lens, gold):.2f}")
     print(f"mean |score - label|: {statistics.mean(abs(s - g) for s, g in zip(scores, gold)):.2f} levels\n")
 
-    print("mean Jev score per labelled level:")
+    print("mean judge score per labelled level:")
     for lv in range(5):
         s = [sc for sc, g in zip(scores, gold) if g == lv]
         print(f"  {lv} {NAMES[lv]:<10} n={len(s):2}  mean {statistics.mean(s):.2f}  range {min(s):.2f}-{max(s):.2f}")
-    print("\nconfusion (rows = label, columns = Jev's level):")
+    print("\nconfusion (rows = label, columns = judge's level):")
     print("            " + " ".join(f"{i:>4}" for i in range(5)))
     for g in range(5):
         print(f"  {g} {NAMES[g]:<9}" + " ".join(f"{sum(1 for p, gg in zip(pred, gold) if gg == g and p == c):>4}" for c in range(5)))
-    print("\nmisses (label → Jev):")
+    print("\nmisses (label → judge):")
     for c, s, p in zip(CASES, scores, pred):
         if p != c[2]:
             ctx = f"  [after: {c[1][:40]}…]" if c[1] else ""

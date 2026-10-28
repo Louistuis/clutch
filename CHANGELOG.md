@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- Local judges: `/auto judge` picks the model that rates each prompt. Jev on OpenRouter stays the default; `/auto judge ollama <model>`, `/auto judge lmstudio <model>` and `/auto judge chat <url> <model>` use a chat model on your own computer, and `/auto judge local [url]` uses llama.cpp's `/v1/systemone` decision endpoint. Setting a judge tests it on two sample prompts at once. `/auto key judge` saves a local server's key.
+- The session brief now refreshes in the background every few turns (after the first reply, then every ~2,500 new characters or 4 replies), not after every reply. The status line shows `✎ brief` while Haiku writes it; `/auto brief` shows it.
+- Benchmark: `bench_router.py --judge local|chat` tests a local judge. H2O-Lightning-4B scored 90.4% exact on the 73 prompts, both ways.
+- Thinking is switched off for chat judges, so reasoning models answer at once.
+
 ## 1.1.1
 
 - `/auto key` no longer saves a key that OpenRouter refuses; it says so and asks you to copy the whole key again. A key it cannot check (offline) is still saved.
