@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+
+- Benchmarks: the Torque index (intelligence kept, cost and speed in one number) and BENCHMARKS.md, which explains every test and shows the raw results. New `bench/session_bench.py` (real coding sessions, with and without Clutch) and `bench/quality_bench.py` (trick questions graded by code).
+- `CLUTCH_MODE=auto|effort|off` in the environment overrides every other setting (used by the benchmarks).
+
 ## 1.5.0
 
 - Cost-aware shifting: before moving to a smaller model, Clutch prices the next request both ways at API list prices (Opus 5.5, Sonnet 5.5, Haiku 5.5, cache reads and writes) and moves when it is cheaper even after losing the prompt cache. Haiku nearly always is, so easy messages reach it at once; Opus to Sonnet still waits for three easy messages in a row or a cold cache.

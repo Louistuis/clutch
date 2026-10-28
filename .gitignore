@@ -4,3 +4,4 @@ node_modules/
 .env*
 .claude-plugin/types/
 tsconfig.json
+__pycache__/

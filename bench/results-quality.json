@@ -1,0 +1,386 @@
+[
+ {
+  "id": "mult",
+  "kind": "easy",
+  "arm": "regular",
+  "correct": true,
+  "reply": "17 \u00d7 23 = 391\n\nANSWER: 391",
+  "cost": 0.2029026,
+  "seconds": 11.6,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "mult",
+  "kind": "easy",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "17 \u00d7 23 = 391 (17 \u00d7 20 = 340, plus 17 \u00d7 3 = 51).\n\nANSWER: 391",
+  "cost": 0.0088152,
+  "seconds": 14.4,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "capital",
+  "kind": "easy",
+  "arm": "regular",
+  "correct": true,
+  "reply": "Australia's capital is Canberra.\n\nANSWER: Canberra",
+  "cost": 0.2031146,
+  "seconds": 11.8,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "capital",
+  "kind": "easy",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "ANSWER: Canberra",
+  "cost": 0.0087796,
+  "seconds": 11.3,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "weekday",
+  "kind": "easy",
+  "arm": "regular",
+  "correct": true,
+  "reply": "1 January 2000 was a Saturday.\n\nANSWER: Saturday",
+  "cost": 0.2104666,
+  "seconds": 8.6,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "weekday",
+  "kind": "easy",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "1 January 2000 was a Saturday.\n\nANSWER: Saturday",
+  "cost": 0.0054138300000000006,
+  "seconds": 9.2,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "float",
+  "kind": "easy",
+  "arm": "regular",
+  "correct": true,
+  "reply": "It prints `False`.\n\nPython stores floats in binary, and 0.1 and 0.2 can't be represented exactly in binary. Their sum comes out as `0.30000000000000004`, which isn't equal to the float stored for `0.3`.\n\nTo compare floats, use a tolerance instead, for example `math.isclose(0.1 + 0.2, 0.3)`, which returns `True`.\n\nANSWER: False",
+  "cost": 0.21275059999999998,
+  "seconds": 8.6,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "float",
+  "kind": "easy",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "Python evaluates `0.1 + 0.2` as `0.30000000000000004` because 0.1 and 0.2 can't be stored exactly in binary floating point. Since that isn't equal to the float `0.3`, the comparison is `False`.\n\nANSWER: False",
+  "cost": 0.00540723,
+  "seconds": 8.1,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "decimal",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "9.9 is larger. Written with the same number of decimal places, 9.9 becomes 9.90, and 0.90 is greater than 0.11.\n\nANSWER: 9.9",
+  "cost": 0.2111706,
+  "seconds": 13.1,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "decimal",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "9.9 is larger. Comparing digit by digit, 9.9 is 9.90, and 90 hundredths is greater than 11 hundredths.\n\nANSWER: 9.9",
+  "cost": 0.00541913,
+  "seconds": 11.5,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "letters",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "The letter \"r\" appears **6** times: 3 in \"strawberry\" and 3 in \"raspberry\".\n\nANSWER: 6",
+  "cost": 0.2115226,
+  "seconds": 11.7,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "letters",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "\"strawberry\" has 3 r's (st**r**awbe**rr**y), and \"raspberry\" has 3 r's (**r**aspbe**rr**y). Together that's 6.\n\nANSWER: 6",
+  "cost": 0.00546603,
+  "seconds": 9.9,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "batball",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "The ball costs **5 cents**.\n\nIf the ball costs x, the bat costs x + $1.00. Together that's 2x + $1.00 = $1.10, so 2x = $0.10 and x = $0.05.\n\nCheck: a $0.05 ball plus a $1.05 bat comes to $1.10, and the bat costs exactly $1.00 more than the ball.\n\nANSWER: 5",
+  "cost": 0.2057026,
+  "seconds": 9.4,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "batball",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "The ball costs 5 cents. If the ball is 5\u00a2, the bat is $1.00 more, or $1.05, and together they come to $1.10.\n\nANSWER: 5",
+  "cost": 0.00544613,
+  "seconds": 8.8,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "syllogism",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "No. All bloops are razzies, but the razzies that are lazzies might all be razzies that aren't bloops. So \"some razzies are lazzies\" doesn't require any bloop to be a lazzy.\n\nFor example, say the razzies are {A, B, C}, the bloops are {A} and the lazzies are {C}. Both premises hold, and no bloop is a lazzy.\n\nANSWER: No",
+  "cost": 0.2131306,
+  "seconds": 11.4,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "syllogism",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "No. The premises don't force it. Every bloop is a razzie, but the razzies that are lazzies might all lie outside the bloops. For example, let bloops be {A} and razzies be {A, B}, with lazzies = {B}. Then all bloops are razzies and some razzies are lazzies, yet no bloop is a lazzie.\n\nANSWER: No",
+  "cost": 0.00546093,
+  "seconds": 9.4,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "alias",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "`len(x)` is 4.\n\n`y = x` doesn't copy the list. It makes `y` a second name for the same list object. For lists, `y += [4]` extends that object in place, the same as `y.extend([4])`, rather than building a new list. So `x` also sees `[1, 2, 3, 4]`.\n\nIf you wrote `y = y + [4]` instead, that would create a new list and bind it to `y`. `x` would stay `[1, 2, 3]`, so `len(x)` would be 3.\n\nANSWER: 4",
+  "cost": 0.2138106,
+  "seconds": 8.4,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "alias",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "`y += [4]` calls `list.__iadd__`, which extends the list in place. Since `y` and `x` refer to the same list object, `x` also changes. The list becomes `[1, 2, 3, 4]`, so `len(x)` is 4.\n\nANSWER: 4",
+  "cost": 0.0054518299999999995,
+  "seconds": 8.0,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "jssort",
+  "kind": "trap",
+  "arm": "regular",
+  "correct": true,
+  "reply": "on, JavaScript turns each element into a string and sorts the strings by UTF-16 code units. As strings, the values are `\"10\"`, `\"1\"` and `\"2\"`. `\"1\"` comes before `\"10\"` because it is a prefix of it, and `\"10\"` comes before `\"2\"` because the character `'1'` sorts before `'2'`.\n\nTo sort the numbers by value, pass a compare function: `[10, 1, 2].sort((a, b) => a - b)` gives `1,2,10`.\n\nANSWER: 1,10,2",
+  "cost": 0.2145626,
+  "seconds": 11.3,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "jssort",
+  "kind": "trap",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "`sort()` with no comparator compares elements as strings, so the numbers are compared as \"10\", \"1\", \"2\". \"1\" comes before \"10\" (it's a prefix), and \"10\" comes before \"2\" (since \"1\" < \"2\"). The sorted array is `[1, 10, 2]`, and `join(',')` gives `\"1,10,2\"`. `console.log` prints that string without quotes.\n\nANSWER: 1,10,2",
+  "cost": 0.00546913,
+  "seconds": 9.1,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "prime",
+  "kind": "hard-short",
+  "arm": "regular",
+  "correct": true,
+  "reply": "Yes. 1000003 is prime; it's the smallest prime greater than one million. I answered from memory, as you asked, and didn't run any check.\n\nANSWER: Yes",
+  "cost": 0.2123626,
+  "seconds": 8.1,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "prime",
+  "kind": "hard-short",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "Yes, 1000003 is prime. It is the smallest prime greater than 10^6.\n\nANSWER: Yes",
+  "cost": 0.00543883,
+  "seconds": 7.1,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "digits",
+  "kind": "hard-short",
+  "arm": "regular",
+  "correct": true,
+  "reply": "I worked this out by hand, without running any code.\n\n2^100 = (2^50)^2. Since 2^50 = 1,125,899,906,842,624, squaring it gives:\n\n2^100 = 1,267,650,600,228,229,401,496,703,205,376\n\nThat is 31 digits. Adding them gives a sum of 115:\n\n1+2+6+7+6+5+0+6+0+0+2+2+8+2+2+9+4+0+1+4+9+6+7+0+3+2+0+5+3+7+6 = 115\n\nANSWER: 115",
+  "cost": 0.2167346,
+  "seconds": 9.3,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "digits",
+  "kind": "hard-short",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "value from memory rather than recomputing it by hand, then checked it with a mod 9 test.\n\nAdding the digits one at a time:\n\n1+2+6+7+6+5+0+6+0+0 = 33\n2+2+8+2+2+9+4+0+1+4 = 34, so the running total is 67\n9+6+7+0+3+2+0+5+3+7+6 = 48, so the total is 115\n\nCheck mod 9: 2^6 \u2261 1 (mod 9) and 100 \u2261 4 (mod 6), so 2^100 \u2261 2^4 = 16 \u2261 7 (mod 9). The digit sum 115 gives 115 \u2212 108 = 7, which matches.\n\nANSWER: 115",
+  "cost": 0.204046,
+  "seconds": 11.8,
+  "models": [
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "id": "zeros",
+  "kind": "hard-short",
+  "arm": "regular",
+  "correct": true,
+  "reply": "100! has **24** trailing zeros.\n\nEvery trailing zero comes from a factor of 10, which is 2 \u00d7 5. Factors of 2 are far more common than factors of 5, so the count of 5s sets the number of zeros:\n\n- \u230a100/5\u230b = 20 multiples of 5\n- \u230a100/25\u230b = 4 multiples of 25, which each add one more 5\n\nThat gives 20 + 4 = 24.\n\nANSWER: 24",
+  "cost": 0.21306260000000002,
+  "seconds": 8.7,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "zeros",
+  "kind": "hard-short",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "100! has 24 trailing zeros. Each trailing zero comes from a factor of 10, and each 10 needs one factor of 5 paired with a factor of 2. Factors of 2 are far more plentiful, so the count is the number of factors of 5: \u230a100/5\u230b + \u230a100/25\u230b = 20 + 4 = 24.\n\nANSWER: 24",
+  "cost": 0.00544993,
+  "seconds": 7.8,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "tiling",
+  "kind": "hard-short",
+  "arm": "regular",
+  "correct": true,
+  "reply": "cally there, it fills one column. That leaves a 2\u00d7(n\u22121) board, which can be tiled in T(n\u22121) ways.\n- Otherwise two horizontal dominoes must sit one above the other there, filling two columns. That leaves a 2\u00d7(n\u22122) board, which can be tiled in T(n\u22122) ways.\n\nSo T(n) = T(n\u22121) + T(n\u22122), starting from T(1) = 1 and T(2) = 2. This gives the Fibonacci numbers:\n\n1, 2, 3, 5, 8, 13, 21, 34, 55, 89\n\nANSWER: 89",
+  "cost": 0.2156866,
+  "seconds": 9.7,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "tiling",
+  "kind": "hard-short",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "A 2\u00d7n board has the recurrence T(n) = T(n\u22121) + T(n\u22122), since the leftmost column is either a vertical domino (leaving a 2\u00d7(n\u22121) board) or two horizontal dominoes stacked (leaving a 2\u00d7(n\u22122) board). With T(1) = 1 and T(2) = 2, this gives 1, 2, 3, 5, 8, 13, 21, 34, 55, 89 for n = 1 through 10. So T(10) = 89, which is the 11th Fibonacci number.\n\nANSWER: 89",
+  "cost": 0.00554273,
+  "seconds": 8.9,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "dice",
+  "kind": "hard-short",
+  "arm": "regular",
+  "correct": true,
+  "reply": "The easiest route is to find the chance of rolling no sixes at all, then subtract it from 1.\n\n- The chance of no six on one roll is 5/6.\n- The chance of no six in four rolls is (5/6)\u2074 = 625/1296.\n- So the chance of at least one six is 1 \u2212 625/1296 = 671/1296 \u2248 0.5177, which rounds to 0.518.\n\nANSWER: 0.518",
+  "cost": 0.2134346,
+  "seconds": 8.7,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "dice",
+  "kind": "hard-short",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "The chance of no six in one roll is 5/6, so the chance of no six in four rolls is (5/6)^4 = 625/1296. The probability of at least one six is 1 \u2212 625/1296 = 671/1296 \u2248 0.5177, which rounds to 0.518.\n\nANSWER: 0.518",
+  "cost": 0.005463230000000001,
+  "seconds": 8.0,
+  "models": [
+   "claude-haiku-5-5"
+  ]
+ },
+ {
+  "id": "balanced",
+  "kind": "code",
+  "arm": "regular",
+  "correct": true,
+  "reply": "```python\ndef is_balanced(s):\n    pairs = {')': '(', ']': '[', '}': '{'}\n    stack = []\n    for ch in s:\n        if ch in '([{':\n            stack.append(ch)\n        elif ch in pairs:\n            if not stack or stack.pop() != pairs[ch]:\n                return False\n    return not stack\n```",
+  "cost": 0.21223060000000002,
+  "seconds": 7.3,
+  "models": [
+   "claude-opus-5-5"
+  ]
+ },
+ {
+  "id": "balanced",
+  "kind": "code",
+  "arm": "clutch",
+  "correct": true,
+  "reply": "```python\ndef is_balanced(s):\n    pairs = {')': '(', ']': '[', '}': '{'}\n    openers = set(pairs.values())\n    stack = []\n    for ch in s:\n        if ch in openers:\n            stack.append(ch)\n        elif ch in pairs:\n            if not stack or stack.pop() != pairs[ch]:\n                return False\n    return not stack\n```",
+  "cost": 0.1062153,
+  "seconds": 8.6,
+  "models": [
+   "claude-sonnet-5-5"
+  ]
+ }
+]

@@ -188,37 +188,16 @@ Some projects deserve their own rules. Each setting applies only to the folder C
 /clutch project reset         back to the global settings
 ```
 
-## Benchmark
+## Benchmarks
 
-`bench/` holds a script that tests the classifier alone, with no model answering anything: 73 hand-labelled prompts (15 trivial, 16 simple, 15 moderate, 15 hard, 12 very hard), a few of them with a previous Claude reply as context.
+Clutch is measured on three things at once: intelligence, cost and speed, folded into one number, the **Torque index** (above 1 means Clutch is worth having on). [BENCHMARKS.md](BENCHMARKS.md) explains every test, how it was run and how it was graded, and shows every raw number.
 
-| | exact level | within one level | right model |
-| --- | --- | --- | --- |
-| Jev 1.14 (OpenRouter, ~0.3 s) | 93.2% | 100% | 94.5% |
-| H2O-Lightning-4B, the local judge (~0.7 s) | 90.4% | 98.6% | 93.2% |
-| prompt length only (no model) | 56.2% | 95.9% | 79.5% |
+| Workload | Intelligence kept | Cheaper | Faster | **Torque** |
+| --- | --- | --- | --- | --- |
+| Real coding sessions | 100% | 1.33× | 0.84× | **1.06** |
+| Single questions (mostly trick questions) | 100% (16 of 16) | 8.6× | 1.04× | **2.99** |
 
-The local row ran on a MacBook Air M4 with the same Q5_K_M file and llama.cpp build Clutch downloads.
-
-An earlier run scored 91.8% exact; one borderline prompt (score 3.45 to 3.5) flips between runs. No prompt was off by more than one level, and Jev was never too strong on the model, only too weak on 4 prompts (a hard task sent to Sonnet).
-
-Read these numbers with care. The labels are the author's own judgement, 73 prompts is a small sample, and some of the prompts overlap the ones used while tuning the wording of the question sent to Jev. The length baseline is cut at the quantiles of this same set, which flatters it. Treat the table as a sanity check, not a guarantee.
-
-The benchmark scores single prompts (some with a previous reply), so it measures Jev and the question wording, not the session brief.
-
-Run it yourself (needs Python 3):
-
-```
-python3 bench/bench_router.py
-```
-
-That tests Jev (your OpenRouter key; about $0.001 in total). To test the local judge while Clutch has it running:
-
-```
-python3 bench/bench_router.py --judge local --url http://127.0.0.1:8749/v1/systemone
-```
-
-Each run prints accuracy, a confusion matrix and the misses.
+In real sessions Clutch cut the cost by 25% and both test projects still ended with every test passing. On 16 questions built to catch a router that picks too weak a model, it got every answer right while picking Haiku for 13 of them. The samples are small; the limits are spelled out in [BENCHMARKS.md](BENCHMARKS.md#limits-read-these-before-quoting-the-numbers).
 
 ## Limits
 

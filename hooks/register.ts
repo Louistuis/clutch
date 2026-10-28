@@ -634,9 +634,10 @@ function transcript(messages: Row[]): string {
 // Conversation text, for how often the brief is refreshed
 const textSize = (messages: Row[]) => messages.reduce((n, m) => n + (isCommand(m) ? 0 : m.text.length + m.toolUses.length * 40), 0)
 
-async function writeBrief($: EngineInterface, messages: Row[]) {
+// Returns what the call cost, in USD at list prices
+async function writeBrief($: EngineInterface, messages: Row[]): Promise<number> {
   const recent = transcript(messages)
-  if (!recent) return
+  if (!recent) return 0
   const r = await $.model.complete({
     model: BRIEF_MODEL,
     effort: 'medium',
@@ -645,18 +646,21 @@ async function writeBrief($: EngineInterface, messages: Row[]) {
     system: BRIEF_SYSTEM,
     prompt: (brief ? `Previous brief (older context, may be stale):\n${brief}\n\n` : '') + `Newest conversation:\n${recent}`,
   })
-  if (r.usage) await addSavings($, { brief: costOf(BRIEF_MODEL, r.usage) })
+  const cost = r.usage ? costOf(BRIEF_MODEL, r.usage) : 0
+  if (cost) await addSavings($, { brief: cost })
   if (r.isAnswered && r.text.trim()) {
     brief = r.text.trim().slice(0, 1200)
     await update($, briefAtom, () => brief)
   }
+  return cost
 }
 
 async function briefNow($: EngineInterface, messages: Row[], size: number) {
   const started = await $.clock.now()
-  try { await writeBrief($, messages) } catch {}
+  let cost = 0
+  try { cost = await writeBrief($, messages) } catch {}
   const debug = await $.env.get('CLUTCH_DEBUG')
-  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== brief rewritten in ${(await $.clock.now()) - started} ms (${turnsSinceBrief} turns, ${size - briefedChars} new chars)\n`))
+  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== brief rewritten in ${(await $.clock.now()) - started} ms, $${cost.toFixed(5)} (${turnsSinceBrief} turns, ${size - briefedChars} new chars)\n`))
   briefedChars = size
   turnsSinceBrief = 0
 }
@@ -680,7 +684,10 @@ async function maybeBrief($: EngineInterface) {
 }
 
 // This project's own mode wins over the global one
+// CLUTCH_MODE=auto|effort|off in the environment wins over both (the benchmarks use it to run one arm each)
 async function effectiveMode($: EngineInterface): Promise<RouterMode> {
+  const forced = await $.env.get('CLUTCH_MODE')
+  if (forced === 'auto' || forced === 'effort' || forced === 'off') return forced
   return project.mode ?? (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
 }
 

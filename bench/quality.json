@@ -1,0 +1,18 @@
+[
+  {"id": "mult", "kind": "easy", "prompt": "What is 17 times 23?", "answer": "391"},
+  {"id": "capital", "kind": "easy", "prompt": "What is the capital of Australia?", "answer": "canberra"},
+  {"id": "weekday", "kind": "easy", "prompt": "What weekday was 1 January 2000?", "answer": "saturday"},
+  {"id": "float", "kind": "easy", "prompt": "In Python, what does print(0.1 + 0.2 == 0.3) print?", "answer": "false"},
+  {"id": "decimal", "kind": "trap", "prompt": "Which is larger, 9.11 or 9.9?", "answer": "9.9"},
+  {"id": "letters", "kind": "trap", "prompt": "How many times does the letter r appear in \"strawberry raspberry\"?", "answer": "6"},
+  {"id": "batball", "kind": "trap", "prompt": "A bat and a ball cost $1.10 together. The bat costs $1.00 more than the ball. How many cents does the ball cost?", "answer": "5"},
+  {"id": "syllogism", "kind": "trap", "prompt": "All bloops are razzies and some razzies are lazzies. Must some bloops be lazzies? Yes or no?", "answer": "no"},
+  {"id": "alias", "kind": "trap", "prompt": "In Python: x = [1, 2, 3]; y = x; y += [4]. What is len(x)?", "answer": "4"},
+  {"id": "jssort", "kind": "trap", "prompt": "What does JavaScript print for console.log([10, 1, 2].sort().join(','))?", "answer": "1,10,2"},
+  {"id": "prime", "kind": "hard-short", "prompt": "Is 1000003 prime? Yes or no.", "answer": "yes"},
+  {"id": "digits", "kind": "hard-short", "prompt": "What is the sum of the digits of 2^100? Work it out without running code.", "answer": "115"},
+  {"id": "zeros", "kind": "hard-short", "prompt": "How many trailing zeros does 100! have?", "answer": "24"},
+  {"id": "tiling", "kind": "hard-short", "prompt": "In how many ways can a 2 by 10 board be tiled with 1 by 2 dominoes?", "answer": "89"},
+  {"id": "dice", "kind": "hard-short", "prompt": "What is the probability of at least one six in four rolls of a fair die, to 3 decimals?", "answer": "0.518"},
+  {"id": "balanced", "kind": "code", "prompt": "Write a Python function is_balanced(s) that returns True when every (, [ and { in s is closed in the right order, ignoring other characters.", "tests": "assert is_balanced('([]{})') and is_balanced('a(b)c') and is_balanced('')\nassert not is_balanced('(]') and not is_balanced('(()') and not is_balanced(')(') and not is_balanced('{[}]')"}
+]

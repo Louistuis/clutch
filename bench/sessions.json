@@ -1,0 +1,24 @@
+{
+  "build": [
+    "hi! can you look at this project and tell me in two lines what it does?",
+    "run the tests",
+    "one test fails, find out why and fix it",
+    "thanks",
+    "add a function to inventory.py that returns the items below a stock threshold, with a test",
+    "what's the difference between a list and a tuple in python? one line",
+    "rename the function total_price to cart_total everywhere",
+    "ok run the tests again",
+    "add a small CLI script that prints a low-stock report",
+    "nice, thanks!"
+  ],
+  "debug": [
+    "the discount calculation feels wrong for orders of exactly 500, check cart.py",
+    "why?",
+    "ok fix it and add tests for the edge cases",
+    "how would you add multi-currency support to the cart? just a short plan, no code",
+    "ok do it",
+    "run the tests",
+    "cool",
+    "write a short README.md section about currencies"
+  ]
+}
