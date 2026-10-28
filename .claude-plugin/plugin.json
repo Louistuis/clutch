@@ -1,0 +1,9 @@
+{
+  "name": "auto-router",
+  "version": "1.0.0",
+  "description": "Claude Code mod that scores each prompt's difficulty with Jev 1.14 (TypeSafe's decision model, via OpenRouter) and sets the turn's effort, or model and effort, to match",
+  "author": { "name": "Louis Nordbø" },
+  "license": "MIT",
+  "repository": "https://github.com/Louistuis/claude-code-auto-router",
+  "types": "./types/index.d.ts"
+}

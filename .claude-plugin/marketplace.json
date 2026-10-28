@@ -1,0 +1,11 @@
+{
+  "name": "auto-router",
+  "owner": { "name": "Louis Nordbø" },
+  "plugins": [
+    {
+      "name": "auto-router",
+      "source": "./",
+      "description": "Jev 1.14 picks the model and effort for each Claude Code prompt (/auto, /auto-effort)"
+    }
+  ]
+}

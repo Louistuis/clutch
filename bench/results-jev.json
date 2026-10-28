@@ -1,0 +1,440 @@
+[
+ {
+  "prompt": "thanks!",
+  "context": null,
+  "label": 0,
+  "score": 0.01
+ },
+ {
+  "prompt": "hi",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "what does HTTP 404 mean?",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "how do i say good morning in japanese",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "what's 17% of 240",
+  "context": null,
+  "label": 0,
+  "score": 0.08
+ },
+ {
+  "prompt": "ok cool",
+  "context": null,
+  "label": 0,
+  "score": 0.01
+ },
+ {
+  "prompt": "what time zone is Oslo in",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "lol that's funny",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "what's the difference between git pull and git fetch, one sentence",
+  "context": null,
+  "label": 0,
+  "score": 0.01
+ },
+ {
+  "prompt": "who created python",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "nice, that worked",
+  "context": null,
+  "label": 0,
+  "score": 0.1
+ },
+ {
+  "prompt": "what does the -r flag do in rm",
+  "context": null,
+  "label": 0,
+  "score": 0.01
+ },
+ {
+  "prompt": "ok",
+  "context": "Done. The battery is at 58% with about 3 hours left.",
+  "label": 0,
+  "score": 0.02
+ },
+ {
+  "prompt": "thanks, that's all",
+  "context": "Fixed: the tunnel now sends headers and body in one write, and 12 calls in a row took under 0.52 s.",
+  "label": 0,
+  "score": 0.06
+ },
+ {
+  "prompt": "what's the capital of Australia",
+  "context": null,
+  "label": 0,
+  "score": 0
+ },
+ {
+  "prompt": "rename the variable foo to bar in utils.py",
+  "context": null,
+  "label": 1,
+  "score": 0.99
+ },
+ {
+  "prompt": "add node_modules to .gitignore",
+  "context": null,
+  "label": 1,
+  "score": 0.95
+ },
+ {
+  "prompt": "run the tests",
+  "context": null,
+  "label": 1,
+  "score": 1
+ },
+ {
+  "prompt": "fix the typo 'recieve' in README.md",
+  "context": null,
+  "label": 1,
+  "score": 0.96
+ },
+ {
+  "prompt": "change the button colour to blue in styles.css",
+  "context": null,
+  "label": 1,
+  "score": 0.99
+ },
+ {
+  "prompt": "install the requests package",
+  "context": null,
+  "label": 1,
+  "score": 0.97
+ },
+ {
+  "prompt": "what's my macbook battery at",
+  "context": null,
+  "label": 1,
+  "score": 0.14
+ },
+ {
+  "prompt": "show me the last 5 commits",
+  "context": null,
+  "label": 1,
+  "score": 0.76
+ },
+ {
+  "prompt": "bump the version in package.json to 1.2.0",
+  "context": null,
+  "label": 1,
+  "score": 0.98
+ },
+ {
+  "prompt": "delete the tmp folder in this repo",
+  "context": null,
+  "label": 1,
+  "score": 0.99
+ },
+ {
+  "prompt": "make this function async: def load(): return open('a').read()",
+  "context": null,
+  "label": 1,
+  "score": 0.98
+ },
+ {
+  "prompt": "convert this json to yaml: {\"a\":1,\"b\":[2,3]}",
+  "context": null,
+  "label": 1,
+  "score": 0.53
+ },
+ {
+  "prompt": "add a docstring to the parse_args function",
+  "context": null,
+  "label": 1,
+  "score": 0.94
+ },
+ {
+  "prompt": "restart the dev server",
+  "context": null,
+  "label": 1,
+  "score": 0.98
+ },
+ {
+  "prompt": "yes do it",
+  "context": "Want me to fix the typo in the README?",
+  "label": 1,
+  "score": 0.97
+ },
+ {
+  "prompt": "sure",
+  "context": "Want me to also add a unit test for that function?",
+  "label": 1,
+  "score": 1.41
+ },
+ {
+  "prompt": "add a dark mode toggle to the settings page",
+  "context": null,
+  "label": 2,
+  "score": 1.86
+ },
+ {
+  "prompt": "write unit tests for the date utils module",
+  "context": null,
+  "label": 2,
+  "score": 2.01
+ },
+ {
+  "prompt": "add pagination to the /users API endpoint and update the frontend list",
+  "context": null,
+  "label": 2,
+  "score": 2.1
+ },
+ {
+  "prompt": "set up eslint and prettier for this project and fix the warnings",
+  "context": null,
+  "label": 2,
+  "score": 2.07
+ },
+ {
+  "prompt": "add a CSV export button to the dashboard",
+  "context": null,
+  "label": 2,
+  "score": 1.7
+ },
+ {
+  "prompt": "make a small CLI that resizes all images in a folder to 1024px",
+  "context": null,
+  "label": 2,
+  "score": 1.76
+ },
+ {
+  "prompt": "add input validation to the signup form with error messages",
+  "context": null,
+  "label": 2,
+  "score": 1.83
+ },
+ {
+  "prompt": "write a GitHub Actions workflow that runs the tests on every push",
+  "context": null,
+  "label": 2,
+  "score": 1.61
+ },
+ {
+  "prompt": "migrate this React component from a class to hooks",
+  "context": null,
+  "label": 2,
+  "score": 1.89
+ },
+ {
+  "prompt": "add a /health endpoint and a docker healthcheck",
+  "context": null,
+  "label": 2,
+  "score": 1.56
+ },
+ {
+  "prompt": "translate the app's UI strings to Norwegian",
+  "context": null,
+  "label": 2,
+  "score": 1.96
+ },
+ {
+  "prompt": "add retry with backoff to our HTTP client",
+  "context": null,
+  "label": 2,
+  "score": 2.02
+ },
+ {
+  "prompt": "build a simple todo app with localStorage",
+  "context": null,
+  "label": 2,
+  "score": 1.98
+ },
+ {
+  "prompt": "add caching to the weather API calls with a 10 minute TTL",
+  "context": null,
+  "label": 2,
+  "score": 1.68
+ },
+ {
+  "prompt": "do both",
+  "context": "I can add the CSV export or the PDF export, or both.",
+  "label": 2,
+  "score": 1.31
+ },
+ {
+  "prompt": "why does the tunnel stall POST responses for 20 seconds but GETs are fast? find the cause and fix it",
+  "context": null,
+  "label": 3,
+  "score": 2.99
+ },
+ {
+  "prompt": "the app crashes randomly on launch on some users' Macs, figure out why",
+  "context": null,
+  "label": 3,
+  "score": 3.03
+ },
+ {
+  "prompt": "our tests pass locally but fail in CI with a timeout, debug it",
+  "context": null,
+  "label": 3,
+  "score": 2.99
+ },
+ {
+  "prompt": "design the database schema and API for a multiplayer leaderboard with seasons",
+  "context": null,
+  "label": 3,
+  "score": 2.98
+ },
+ {
+  "prompt": "memory keeps climbing on the server until it OOMs after two days, find the leak",
+  "context": null,
+  "label": 3,
+  "score": 3.03
+ },
+ {
+  "prompt": "set up a reverse tunnel from the Mac through the gateway server so the harness can reach the model, with auto-restart",
+  "context": null,
+  "label": 3,
+  "score": 2.28
+ },
+ {
+  "prompt": "add passkey login next to the existing password auth across the web app and the Mac app",
+  "context": null,
+  "label": 3,
+  "score": 3
+ },
+ {
+  "prompt": "the sync between the phone app and the server sometimes duplicates photos, find out why and fix it",
+  "context": null,
+  "label": 3,
+  "score": 2.99
+ },
+ {
+  "prompt": "move the site from nginx on our server to a Cloudflare Worker without downtime",
+  "context": null,
+  "label": 3,
+  "score": 3.08
+ },
+ {
+  "prompt": "profile the render loop and get the game from 30 to 60 fps",
+  "context": null,
+  "label": 3,
+  "score": 2.94
+ },
+ {
+  "prompt": "implement end-to-end encryption for the chat archive with key rotation",
+  "context": null,
+  "label": 3,
+  "score": 3.45
+ },
+ {
+  "prompt": "integrate Paddle billing with webhooks, subscription states and the existing user accounts",
+  "context": null,
+  "label": 3,
+  "score": 2.96
+ },
+ {
+  "prompt": "race condition: two requests sometimes both get the last seat, fix it properly",
+  "context": null,
+  "label": 3,
+  "score": 2.91
+ },
+ {
+  "prompt": "build a Claude Code mod that routes each prompt to a model by complexity",
+  "context": null,
+  "label": 3,
+  "score": 2.45
+ },
+ {
+  "prompt": "why?",
+  "context": "The build failed: linker error, undefined symbol _OBJC_CLASS_$_SCNView, in the Release config only.",
+  "label": 3,
+  "score": 2.08
+ },
+ {
+  "prompt": "design and build a multiplayer backend for the game with rooms, matchmaking, anti-cheat and persistence, and deploy it",
+  "context": null,
+  "label": 4,
+  "score": 3.81
+ },
+ {
+  "prompt": "rewrite the whole app from Electron to native SwiftUI with feature parity",
+  "context": null,
+  "label": 4,
+  "score": 3.99
+ },
+ {
+  "prompt": "build a full LaTeX editor like Overleaf with real-time collaboration, compile servers and billing",
+  "context": null,
+  "label": 4,
+  "score": 3.98
+ },
+ {
+  "prompt": "migrate all services from our two servers to a new Kubernetes cluster with zero downtime and a rollback path",
+  "context": null,
+  "label": 4,
+  "score": 3.87
+ },
+ {
+  "prompt": "our production database got corrupted overnight, recover what you can and get the site back up",
+  "context": null,
+  "label": 4,
+  "score": 3.99
+ },
+ {
+  "prompt": "build a Rust reimplementation of Minecraft's network protocol that vanilla clients can join",
+  "context": null,
+  "label": 4,
+  "score": 3.95
+ },
+ {
+  "prompt": "make the AI chat site production ready: auth, rate limits, moderation, billing, monitoring and scaling to 10k users",
+  "context": null,
+  "label": 4,
+  "score": 3.97
+ },
+ {
+  "prompt": "audit the entire codebase for security vulnerabilities and fix everything you find",
+  "context": null,
+  "label": 4,
+  "score": 3.99
+ },
+ {
+  "prompt": "port the game engine to WebGPU and keep every existing feature working",
+  "context": null,
+  "label": 4,
+  "score": 3.98
+ },
+ {
+  "prompt": "design a fault-tolerant distributed rate limiter across three regions with clock skew, partitions and hot keys, then implement it",
+  "context": null,
+  "label": 4,
+  "score": 3.61
+ },
+ {
+  "prompt": "yes do it",
+  "context": "Plan: 1. migrate the database schema across the two servers, 2. rewrite the sync service, 3. move the tunnels, 4. cut over the live site with a rollback path. Shall I go ahead?",
+  "label": 4,
+  "score": 3.6
+ },
+ {
+  "prompt": "go ahead",
+  "context": "I can rebuild the whole auth system with passkeys, migrate every existing user, and add an admin audit trail. Want that?",
+  "label": 4,
+  "score": 3.8
+ }
+]
