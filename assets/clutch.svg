@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 220" role="img" aria-label="Clutch: automatic gear changes for Claude Code">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b1712"/><stop offset="1" stop-color="#2a2118"/></linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e8875b"/><stop offset="1" stop-color="#f2b26b"/></linearGradient>
+  </defs>
+  <rect width="880" height="220" rx="24" fill="url(#bg)"/>
+  <g transform="translate(70 40)" fill="none" stroke-linecap="round" stroke-width="10">
+    <path d="M0 0 V140 M70 0 V140 M140 0 V140 M0 70 H140" stroke="#5c4c3c"/>
+    <path d="M70 70 V0" stroke="url(#acc)"/>
+    <circle cx="0" cy="0" r="13" fill="#5c4c3c" stroke="none"/><circle cx="0" cy="140" r="13" fill="#5c4c3c" stroke="none"/>
+    <circle cx="140" cy="0" r="13" fill="#5c4c3c" stroke="none"/><circle cx="140" cy="140" r="13" fill="#5c4c3c" stroke="none"/>
+    <circle cx="70" cy="140" r="13" fill="#5c4c3c" stroke="none"/>
+    <circle cx="70" cy="0" r="22" fill="url(#acc)" stroke="none"/>
+  </g>
+  <text x="270" y="118" font-family="-apple-system, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="84" font-weight="700" fill="#f6efe6" letter-spacing="-2">Clutch</text>
+  <text x="274" y="160" font-family="-apple-system, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#c9b8a6">Automatic gear changes for Claude Code</text>
+</svg>

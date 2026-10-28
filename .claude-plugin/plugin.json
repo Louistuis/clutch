@@ -1,9 +1,11 @@
 {
-  "name": "auto-router",
-  "version": "1.0.0",
-  "description": "Claude Code mod that scores each prompt's difficulty with Jev 1.14 (TypeSafe's decision model, via OpenRouter) and sets the turn's effort, or model and effort, to match",
-  "author": { "name": "Louis Nordbø" },
+  "name": "clutch",
+  "version": "1.1.0",
+  "description": "Clutch: automatic gear changes for Claude Code. Jev 1.14 (TypeSafe, via OpenRouter) scores each prompt with a Haiku-written brief of the session, and the turn gets the model and effort to match",
+  "author": {
+    "name": "Louis Nordbø"
+  },
   "license": "MIT",
-  "repository": "https://github.com/Louistuis/claude-code-auto-router",
+  "repository": "https://github.com/Louistuis/clutch",
   "types": "./types/index.d.ts"
 }

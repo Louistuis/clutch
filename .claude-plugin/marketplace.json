@@ -1,11 +1,13 @@
 {
-  "name": "auto-router",
-  "owner": { "name": "Louis Nordbø" },
+  "name": "clutch",
+  "owner": {
+    "name": "Louis Nordbø"
+  },
   "plugins": [
     {
-      "name": "auto-router",
+      "name": "clutch",
       "source": "./",
-      "description": "Jev 1.14 picks the model and effort for each Claude Code prompt (/auto, /auto-effort)"
+      "description": "Clutch: Jev picks the model and effort for each Claude Code prompt, informed by a Haiku brief of the session (/auto, /auto-effort)"
     }
   ]
 }

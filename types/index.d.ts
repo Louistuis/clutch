@@ -11,6 +11,6 @@ export type Route = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'auto-router': { last: Route | null; mode: RouterMode }
+    clutch: { last: Route | null; mode: RouterMode; brief: string }
   }
 }

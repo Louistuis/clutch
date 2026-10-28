@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+The router is now called Clutch, and it installs as `clutch@clutch` from `Louistuis/clutch`.
+
+- Beginner setup: `/auto key` saves the OpenRouter key from your clipboard (never shown in the chat) and checks it; `/auto status` checks the key, the mode and the last pick; `/auto help` lists the commands. `/auto` without a key shows the setup steps instead of turning on. A one-time hint appears after install.
+- The README starts with a four-step setup for people new to coding and GitHub.
+
+- Session briefs: after each main turn, Haiku at medium effort compresses the newest ~60,000 characters of the conversation (plus its previous brief) into a ~110-word routing brief. Jev reads it with every prompt, so routing knows what the session is in the middle of.
+- The brief is written in the background; a prompt typed before it is ready waits at most 4 s, then uses the previous brief.
+- Slash commands and their output are left out of the brief.
+- Status line: `Clutch → sonnet · medium · 1.2/4 · ctx`.
+- `CLUTCH_DEBUG=<file>` logs every score and the text Jev saw.
+
 ## 1.0.0
 
 First public release.
