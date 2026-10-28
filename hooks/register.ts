@@ -1,28 +1,40 @@
 import { atom, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Judge, Route, RouterMode } from '../types'
+import type { Route, RouterMode } from '../types'
 
-// Clutch. /auto: a judge model picks the model and effort for every prompt. /auto-effort: only the effort.
-// /auto off stops either. The judge is Jev 1.14 on OpenRouter (~0.3 s, ~$0.00004 a prompt) unless
-// /auto judge points it at a local model: a llama.cpp decision endpoint, or any chat model (Ollama, LM Studio).
+// Clutch. /clutch: a small judge model picks the model and effort for every prompt. /clutch-effort: only the effort.
+// /clutch off stops either. The judge is Jev 1.14 on OpenRouter (~0.3 s, ~$0.00004 a prompt), or, with
+// /clutch local, H2O-Lightning-4B on this computer: Clutch checks the machine, downloads llama.cpp and the
+// model once, and runs the server itself. Without an OpenRouter key, local is the default.
 // Every few turns Haiku (medium effort) compresses the newest conversation into a short routing brief
 // in the background, so the judge rates a prompt knowing what the session is in the middle of.
 const JEV_URL = 'https://openrouter.ai/api/alpha/decisions'
 const JEV = 'typesafe/jev-1.14'
 // The OpenRouter key: $OPENROUTER_API_KEY, else the first line of ~/.config/openrouter.key
 const KEY_FILE = '.config/openrouter.key'
-// A local judge's key, if its server wants one: $CLUTCH_JUDGE_KEY, else ~/.config/clutch-judge.key
-const JUDGE_KEY_FILE = '.config/clutch-judge.key'
-// How long a judge may take before the turn keeps the session's own model and effort. The hook that
-// waits has a 10 s budget, shared with BRIEF_WAIT_MS, so a slow local model gets 6 s at most.
-const TIMEOUT_MS: Record<Judge['kind'], number> = { jev: 2500, local: 6000, chat: 6000 }
-const DEFAULT_URL = {
-  local: 'http://127.0.0.1:8080/v1/systemone',
-  // Ollama's own chat API: the only one of its APIs that reliably takes think: false
-  ollama: 'http://127.0.0.1:11434/api/chat',
-  lmstudio: 'http://127.0.0.1:1234/v1/chat/completions',
+// How long the judge may take before the turn keeps the session's own model and effort. The hook that
+// waits has a 10 s budget, shared with BRIEF_WAIT_MS.
+const JEV_TIMEOUT_MS = 2500
+const LOCAL_TIMEOUT_MS = 6000
+
+// The local judge: pinned downloads, checked by SHA-256 before use
+const LOCAL_DIR = '.clutch'
+const LOCAL_PORT = 8749
+const LLAMA = {
+  url: 'https://github.com/ggml-org/llama.cpp/releases/download/b11773/llama-b11773-bin-macos-arm64.tar.gz',
+  sha256: 'ec085aac26d71d51b0f1d5a05bf3bd85b10a8e8f12c85e60c014e1857d88cd40',
+  server: 'llama-b11773/llama-server',
 }
+const MODEL = {
+  url: 'https://huggingface.co/h2oai/h2o-lightning-4b-gguf/resolve/3a0a341842c5d67443005d06c5e199d69c5c78af/h2o-lightning-4b-Q5_K_M.gguf',
+  sha256: 'dc1854eab0fdebd7eae8c6313b1a2d13cbf42809bdfd173c240691fbd042ded6',
+  file: 'h2o-lightning-4b-Q5_K_M.gguf',
+  bytes: 3074991136,
+}
+// What a machine needs to run it fast enough: Apple silicon (Metal), 8 GB of memory, room for the files
+const MIN_MEMORY = 8 * 2 ** 30
+const MIN_FREE_DISK = MODEL.bytes + 2 ** 30
 
 const BRIEF_MODEL = 'haiku'
 // The newest conversation that goes to Haiku, in characters (~15k tokens), newest kept first
@@ -58,9 +70,6 @@ const LEVELS = [
 ]
 const MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5-5']
 const EFFORTS = ['low', 'medium', 'high', 'high', 'max'] as const
-// A chat model has no score head, so it answers in words: one number, the same five levels
-const CHAT_SYSTEM = `You rate how much work a coding assistant's next job is. Reply with one number from 0 to 4 and nothing else (one decimal allowed).
-${LEVELS.map((l, i) => `${i} = ${l}`).join('\n')}`
 
 const last = atom({ plugin: 'clutch', key: 'last' } as const, null)
 const modeAtom = atom({ plugin: 'clutch', key: 'mode' } as const, 'off')
@@ -68,30 +77,34 @@ const briefAtom = atom({ plugin: 'clutch', key: 'brief' } as const, '')
 
 const short = (model: string) => model.replace('claude-', '').replace(/-\d.*$/, '')
 const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n) + '…' : t)
+const gb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`
 
-// Module state: the judge in use, the latest brief and the call writing the next, what the status shows
-let judge: Judge = { kind: 'jev' }
+// Module state: local on or off and how far its setup is, the latest brief, what the status shows
+let localOn = false
+type LocalPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'starting' | 'ready' | 'unavailable'
+let local: { phase: LocalPhase; percent: number; note: string } = { phase: 'idle', percent: 0, note: '' }
+let localSetup: Promise<void> | null = null
+let server: AsyncGenerator<unknown, unknown> | null = null
+let fetching: AsyncGenerator<unknown, unknown> | null = null
 let brief = ''
 let briefing: Promise<void> | null = null
 let briefedChars = 0
 let turnsSinceBrief = 0
 let shown: { mode: RouterMode; route: Route | null } = { mode: 'off', route: null }
 
-function judgeName(j: Judge): string {
-  if (j.kind === 'jev') return 'Jev 1.14 on OpenRouter'
-  if (j.kind === 'local') return `local decision model at ${j.url}`
-  return `${j.model} at ${j.url}`
-}
-
-// The status line: the pick, the judge when it is not Jev, and the brief (✎ while Haiku writes it)
+// The status line: the pick, then what the judge and the brief are doing
 function paint($: EngineInterface) {
   const { mode, route: r } = shown
   if (mode === 'off') return $.ui.status(undefined)
   const name = mode === 'auto' ? STATUS_NAME : `${STATUS_NAME} effort`
-  const tail = (judge.kind === 'jev' ? '' : judge.kind === 'local' ? ' · local' : ` · ${judge.model}`)
-    + (briefing ? ' · ✎ brief' : brief ? ' · ctx' : '')
+  const judgeNote = !localOn ? ''
+    : local.phase === 'ready' ? ' · local'
+    : local.phase === 'downloading' ? ` · ↓ local model ${local.percent}%`
+    : local.phase === 'unavailable' ? ' · local unavailable'
+    : local.phase === 'idle' ? '' : ` · local ${local.phase}`
+  const tail = judgeNote + (briefing ? ' · ✎ brief' : brief ? ' · ctx' : '')
   if (!r) return $.ui.status(`${name} engaged${tail}`)
-  if (r.score < 0) return $.ui.status(`${name}: judge unreachable, session settings${tail}`)
+  if (r.score < 0) return $.ui.status(`${name}: no judge yet, session settings${tail}`)
   $.ui.status(`${name} → ${r.model ? short(r.model) + ' · ' : ''}${r.effort} · ${r.score.toFixed(1)}/4${tail}`)
 }
 
@@ -108,25 +121,13 @@ async function findKey($: EngineInterface): Promise<{ key: string; from: string 
   return key ? { key, from: `~/${KEY_FILE}` } : null
 }
 
-async function judgeKey($: EngineInterface): Promise<string | null> {
-  const fromEnv = (await $.env.get('CLUTCH_JUDGE_KEY'))?.trim()
-  if (fromEnv) return fromEnv
-  const h = await home($)
-  return h ? (await $.fs.read(`${h}/${JUDGE_KEY_FILE}`).catch(() => '')).trim() || null : null
-}
-
-// Jev needs the OpenRouter key; a local judge needs nothing but its server
-async function ready($: EngineInterface): Promise<boolean> {
-  return judge.kind !== 'jev' || !!(await findKey($))
-}
-
 const SETUP = [
-  'Clutch needs an OpenRouter key (it costs about $0.00004 a prompt, so $1 lasts a long time):',
+  'Clutch needs a judge: a small model that rates each message.',
+  'This computer cannot run the local one, so use Jev on OpenRouter (about $0.00004 a message, $1 lasts a long time):',
   '  1. Go to https://openrouter.ai/keys, sign in, and click "Create key".',
   '  2. Add a little credit at https://openrouter.ai/settings/credits ($1 to $5 is plenty).',
-  '  3. Copy the key, then type /auto key here. Clutch saves it from your clipboard; it never shows it in the chat.',
-  '  4. Type /auto to start.',
-  'Or skip OpenRouter and use a model on your own computer: /auto judge help.',
+  '  3. Copy the key, then type /clutch key here. Clutch saves it from your clipboard; it never shows it in the chat.',
+  '  4. Type /clutch to start.',
 ].join('\n')
 
 // The clipboard on macOS, Windows or Linux, whichever answers first
@@ -149,73 +150,226 @@ async function checkKey($: EngineInterface, key: string): Promise<string> {
   return d.limit_remaining != null ? `works, $${Number(d.limit_remaining).toFixed(2)} left on its limit` : 'works'
 }
 
-async function writePrivate($: EngineInterface, path: string, text: string) {
-  await $.fs.write(path, text)
-  // Owner-only, where the system has chmod (Windows keeps the folder's own permissions)
-  await $.process.run(['chmod', '600', path]).catch(() => null)
-}
-
-async function saveKey($: EngineInterface, forJudge: boolean): Promise<string> {
+async function saveKey($: EngineInterface): Promise<string> {
   const key = await clipboard($)
-  const h = await home($)
-  if (!h) return 'Could not find your home folder to save the key in. Set the key as an environment variable instead (see the README).'
-  if (forJudge) {
-    if (!key || /\s/.test(key)) return 'Copy your local server\'s key (one line, no spaces), then type /auto key judge again.'
-    await writePrivate($, `${h}/${JUDGE_KEY_FILE}`, key + '\n')
-    return `Judge key saved to ~/${JUDGE_KEY_FILE}. /auto judge test checks it.`
-  }
   if (!/^sk-or-[A-Za-z0-9_-]{20,}$/.test(key)) {
-    return 'Your clipboard does not hold an OpenRouter key (they start with "sk-or-"). Copy the key from https://openrouter.ai/keys, then type /auto key again.'
+    return 'Your clipboard does not hold an OpenRouter key (they start with "sk-or-"). Copy the key from https://openrouter.ai/keys, then type /clutch key again.'
   }
   // A key OpenRouter refuses is not saved; one it could not check (offline) is
   const check = await checkKey($, key)
-  if (check.includes('401')) return `Not saved: ${check}. Make sure you copied the whole key from https://openrouter.ai/keys, then type /auto key again.`
-  await writePrivate($, `${h}/${KEY_FILE}`, key + '\n')
-  return `Key saved to ~/${KEY_FILE} (${check}). Type /auto to start Clutch.`
+  if (check.includes('401')) return `Not saved: ${check}. Make sure you copied the whole key from https://openrouter.ai/keys, then type /clutch key again.`
+  const h = await home($)
+  if (!h) return 'Could not find your home folder to save the key in. Set OPENROUTER_API_KEY instead (see the README).'
+  const path = `${h}/${KEY_FILE}`
+  await $.fs.write(path, key + '\n')
+  // Owner-only, where the system has chmod (Windows keeps the folder's own permissions)
+  await $.process.run(['chmod', '600', path]).catch(() => null)
+  return `Key saved to ~/${KEY_FILE} (${check}).${localOn ? ' Local is on, so Clutch keeps using the model on this computer; /clutch local off switches to Jev.' : ' Type /clutch to start Clutch.'}`
 }
 
-// --- Judges: each turns the same state into a score from 0 to 4, or null ---
+// --- The local judge ---
 
-async function post($: EngineInterface, url: string, key: string | null, body: unknown) {
+async function setLocal($: EngineInterface, phase: LocalPhase, note = '', percent = local.percent) {
+  local = { phase, note, percent }
+  paint($)
+}
+
+// Apple silicon with 8 GB and room for the model; anything else is told why not
+async function sha256($: EngineInterface, path: string): Promise<string> {
+  const r = await $.process.run(['shasum', '-a', '256', path], { timeoutMs: 300000 }).catch(() => null)
+  return r?.stdout.split(/\s+/)[0] ?? ''
+}
+
+async function eligibility($: EngineInterface): Promise<string | null> {
+  const os = await $.process.run(['uname', '-sm']).catch(() => null)
+  if (!os || os.stdout.trim() !== 'Darwin arm64') return 'the local model needs a Mac with Apple silicon (M1 or newer) for now'
+  const mem = Number((await $.process.run(['sysctl', '-n', 'hw.memsize'])).stdout.trim())
+  if (mem < MIN_MEMORY) return `the local model needs 8 GB of memory, and this Mac has ${gb(mem)}`
+  const h = (await home($))!
+  if (!(await modelOk($, `${h}/${LOCAL_DIR}/${MODEL.file}`))) {
+    const df = (await $.process.run(['df', '-k', h])).stdout.trim().split('\n').pop()?.split(/\s+/) ?? []
+    const free = Number(df[3]) * 1024
+    if (free < MIN_FREE_DISK) return `the local model needs ${gb(MIN_FREE_DISK)} of free disk space, and there is ${gb(free)}`
+  }
+  return null
+}
+
+// curl with resume, its progress bar read for the status line
+async function download($: EngineInterface, url: string, to: string, label: string) {
+  const curl = $.process.spawn({ argv: ['curl', '-fL', '--retry', '3', '-C', '-', '-#', '-o', to, url] })
+  fetching = curl
+  let shown = -1
+  for await (const piece of curl) {
+    const found = [...piece.text.matchAll(/(\d+(?:\.\d+)?)%/g)].pop()
+    const pct = found ? Math.floor(Number(found[1])) : shown
+    if (pct !== shown) { shown = pct; await setLocal($, 'downloading', label, pct) }
+  }
+  if (fetching !== curl) throw new Error('the download was stopped')
+  fetching = null
+  const end = await curl.result
+  if (end.code !== 0) throw new Error(`the download of ${label} stopped (curl exit ${end.code}); /clutch local tries again and picks up where it left off`)
+}
+
+const sizeOf = ($: EngineInterface, path: string) =>
+  $.process.run(['stat', '-f', '%z', path]).then(r => (r.exitCode === 0 ? Number(r.stdout.trim()) : 0)).catch(() => 0)
+
+// Checked once after download; then a marker next to it saves hashing 3 GB at every session start
+async function modelOk($: EngineInterface, path: string): Promise<boolean> {
+  const marker = (await $.fs.read(`${path}.sha256`).catch(() => '')).trim()
+  return marker === MODEL.sha256 && (await sizeOf($, path)) === MODEL.bytes
+}
+
+async function serverUp($: EngineInterface): Promise<boolean> {
+  const r = await $.http.fetch(`http://127.0.0.1:${LOCAL_PORT}/health`).catch(() => null)
+  return !!r && r.ok
+}
+
+// Runs for the session's life: the loop is the server's; leaving it stops the server
+async function runServer($: EngineInterface, bin: string, model: string, onReady: () => void) {
+  const child = $.process.spawn({
+    argv: [bin, '-m', model, '--host', '127.0.0.1', '--port', String(LOCAL_PORT), '-ngl', '99', '-c', '8192', '-np', '1', '--no-webui'],
+  })
+  server = child
+  for await (const piece of child) {
+    if (/listening on|all slots are idle/.test(piece.text)) onReady()
+  }
+  if (server === child) server = null
+}
+
+async function fetchFiles($: EngineInterface, dir: string, bin: string, model: string) {
+  if ((await $.process.run(['test', '-x', bin])).exitCode !== 0) {
+    const tgz = `${dir}/llama.tar.gz`
+    await download($, LLAMA.url, tgz, 'llama.cpp')
+    await setLocal($, 'verifying', 'checking llama.cpp')
+    if ((await sha256($, tgz)) !== LLAMA.sha256) {
+      await $.process.run(['rm', '-f', tgz])
+      return setLocal($, 'unavailable', 'the llama.cpp download did not match its checksum; /clutch local tries again')
+    }
+    await $.process.run(['tar', 'xzf', tgz, '-C', dir])
+    await $.process.run(['rm', '-f', tgz])
+  }
+  // A complete file without its marker (moved, or the marker deleted) is hashed, not fetched again
+  if (!(await modelOk($, model)) && (await sizeOf($, model)) === MODEL.bytes) {
+    await setLocal($, 'verifying', 'checking the model (a few seconds)')
+    if ((await sha256($, model)) === MODEL.sha256) await $.fs.write(`${model}.sha256`, MODEL.sha256 + '\n')
+    else await $.process.run(['rm', '-f', model])
+  }
+  if (!(await modelOk($, model))) {
+    await download($, MODEL.url, `${model}.part`, 'the local model')
+    await setLocal($, 'verifying', 'checking the model (a few seconds)')
+    if ((await sha256($, `${model}.part`)) !== MODEL.sha256) {
+      await $.process.run(['rm', '-f', `${model}.part`])
+      return setLocal($, 'unavailable', 'the model download did not match its checksum; /clutch local downloads it again')
+    }
+    await $.process.run(['mv', `${model}.part`, model])
+    await $.fs.write(`${model}.sha256`, MODEL.sha256 + '\n')
+  }
+}
+
+async function prepareLocal($: EngineInterface) {
+  await setLocal($, 'checking', 'checking this computer')
+  const why = await eligibility($)
+  if (why) return setLocal($, 'unavailable', why)
+  const h = (await home($))!
+  const dir = `${h}/${LOCAL_DIR}`
+  await $.process.run(['mkdir', '-p', dir])
+  const bin = `${dir}/${LLAMA.server}`
+  const model = `${dir}/${MODEL.file}`
+  const lock = `${dir}/.downloading`
+  const needsFiles = (await $.process.run(['test', '-x', bin])).exitCode !== 0 || !(await modelOk($, model))
+  // One download at a time across every Claude Code window: mkdir is atomic. A lock older than an hour is stale
+  if (needsFiles) {
+    await $.process.run(['find', lock, '-maxdepth', '0', '-mmin', '+60', '-exec', 'rmdir', '{}', ';']).catch(() => null)
+    if ((await $.process.run(['mkdir', lock])).exitCode !== 0) return setLocal($, 'idle', 'another Claude Code window is downloading it')
+  }
+  try {
+    await fetchFiles($, dir, bin, model)
+  } finally {
+    if (needsFiles) await $.process.run(['rmdir', lock]).catch(() => null)
+  }
+  if (local.phase === 'unavailable') return
+
+  // Another session may already run it on the same port
+  if (await serverUp($)) return setLocal($, 'ready', 'running')
+  await setLocal($, 'starting', 'loading the model')
+  let resolveReady!: () => void
+  const ready = new Promise<void>(r => { resolveReady = r })
+  const running = runServer($, bin, model, resolveReady).catch(() => {})
+  // The log line says it is listening; the health check says it can answer (the model may still be loading)
+  await Promise.race([ready, running])
+  for (let i = 0; i < 40 && !(await serverUp($)); i++) await $.clock.sleep(500)
+  if (await serverUp($)) await setLocal($, 'ready', 'running')
+  else await setLocal($, 'unavailable', `the local server did not start; its files are in ~/${LOCAL_DIR}`)
+  void running.then(() => { if (localOn && local.phase === 'ready') return setLocal($, 'idle', 'stopped') })
+}
+
+// Starts the setup once; later calls see it running or done
+function ensureLocal($: EngineInterface) {
+  if (local.phase === 'ready' || localSetup) return
+  const run = prepareLocal($)
+    .catch(err => setLocal($, 'unavailable', String(err?.message ?? err)))
+    .finally(() => { if (localSetup === run) localSetup = null })
+  localSetup = run
+}
+
+async function stopLocal($: EngineInterface) {
+  const child = server
+  const curl = fetching
+  server = null
+  fetching = null
+  await child?.return(undefined).catch(() => {})
+  await curl?.return(undefined).catch(() => {})
+  await setLocal($, 'idle', '', 0)
+}
+
+async function setLocalOn($: EngineInterface, on: boolean) {
+  localOn = on
+  await $.store.set('local', on)
+  if (on && local.phase === 'unavailable') local.phase = 'idle'
+  if (on) ensureLocal($)
+  else await stopLocal($)
+}
+
+function localSummary(): string {
+  switch (local.phase) {
+    case 'ready': return 'Local model: running on this computer.'
+    case 'downloading': return `Local model: downloading ${local.note}, ${local.percent}% (one time only).`
+    case 'unavailable': return `Local model: not available: ${local.note}.`
+    case 'idle': return 'Local model: not started yet.'
+    default: return `Local model: ${local.note}.`
+  }
+}
+
+// --- Scoring ---
+
+async function post($: EngineInterface, url: string, key: string | null, body: unknown, timeoutMs: number) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (key) headers.Authorization = `Bearer ${key}`
   const answer = $.http.fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).catch(() => null)
-  const res = await Promise.race([answer, $.clock.sleep(TIMEOUT_MS[judge.kind]).then(() => null)])
+  const res = await Promise.race([answer, $.clock.sleep(timeoutMs).then(() => null)])
   return res && res.ok ? JSON.parse(res.text) : null
 }
 
-// Jev and llama.cpp's /v1/systemone take the same request; only Jev names a model
-async function scoreDecision($: EngineInterface, state: string): Promise<number | null> {
-  const isJev = judge.kind === 'jev'
-  const key = isJev ? (await findKey($))?.key ?? null : await judgeKey($)
-  if (isJev && !key) return null
-  const url = judge.kind === 'local' ? judge.url : JEV_URL
-  const d = await post($, url, key, {
-    ...(isJev ? { model: JEV } : {}),
-    state,
-    questions: { difficulty: { type: 'score', instructions: QUESTION, criteria: LEVELS } },
-  })
-  const score = d?.answers?.difficulty?.score
-  return typeof score === 'number' ? score : null
-}
-
-// Any OpenAI-compatible chat endpoint (LM Studio, llama.cpp, vLLM) or Ollama's /api/chat: one number back
-async function scoreChat($: EngineInterface, state: string): Promise<number | null> {
-  if (judge.kind !== 'chat') return null
-  const messages = [{ role: 'system', content: CHAT_SYSTEM }, { role: 'user', content: `${state}\n\n${QUESTION} /no_think` }]
-  const ollama = /\/api\/chat$/.test(judge.url)
-  // Thinking models would spend the whole budget reasoning: each server's own way to switch it off
-  const d = await post($, judge.url, await judgeKey($), ollama
-    ? { model: judge.model, messages, stream: false, think: false, options: { temperature: 0, num_predict: 16 } }
-    : { model: judge.model, messages, stream: false, temperature: 0, max_tokens: 16, chat_template_kwargs: { enable_thinking: false } })
-  const m = (ollama ? d?.message : d?.choices?.[0]?.message) ?? {}
-  const text = String(m.content || m.reasoning_content || m.reasoning || m.thinking || '').replace(/<think>[\s\S]*?<\/think>/g, '')
-  const n = text.match(/(?:^|[^\d.])([0-4](?:\.\d+)?)(?![\d.])/)
-  return n ? Math.max(0, Math.min(4, Number(n[1]))) : null
-}
-
+// Local when it is on and running; Jev when local is off. Jev and llama.cpp's /v1/systemone take the same request
+let used = 'Jev'
 async function score($: EngineInterface, state: string): Promise<number | null> {
-  return judge.kind === 'chat' ? scoreChat($, state) : scoreDecision($, state)
+  const questions = { difficulty: { type: 'score', instructions: QUESTION, criteria: LEVELS } }
+  let d: any = null
+  used = localOn && local.phase === 'ready' ? 'local' : 'Jev'
+  if (localOn && local.phase === 'ready') {
+    d = await post($, `http://127.0.0.1:${LOCAL_PORT}/v1/systemone`, null, { state, questions }, LOCAL_TIMEOUT_MS)
+    // The session that ran the server may have closed: start it again for the next prompt
+    if (!d && !(await serverUp($))) { local.phase = 'idle'; ensureLocal($) }
+  } else {
+    // A failed setup waits for /clutch local; it is not retried on every message
+    if (localOn && local.phase !== 'unavailable') ensureLocal($)
+    // Jev while local is off, or while it is still being set up and a key exists
+    const key = (await findKey($))?.key
+    if (!key) return null
+    d = await post($, JEV_URL, key, { model: JEV, state, questions }, JEV_TIMEOUT_MS)
+  }
+  const s = d?.answers?.difficulty?.score
+  return typeof s === 'number' ? s : null
 }
 
 async function classify($: EngineInterface, text: string, mode: RouterMode): Promise<Route | null> {
@@ -227,91 +381,25 @@ async function classify($: EngineInterface, text: string, mode: RouterMode): Pro
   const s = await score($, state)
   // CLUTCH_DEBUG=<file>: append what the judge saw and said, for testing the router
   const debug = await $.env.get('CLUTCH_DEBUG')
-  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${judgeName(judge)}: ${s?.toFixed(2) ?? 'no answer'}\n${state}\n`))
+  if (debug) await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== ${used}: ${s?.toFixed(2) ?? 'no answer'}\n${state}\n`))
   if (s === null) return null
   const level = Math.max(0, Math.min(4, Math.round(s)))
   return { score: s, level, effort: EFFORTS[level] ?? 'high', model: mode === 'auto' ? MODELS[level] : undefined }
-}
-
-// --- /auto judge ---
-
-const JUDGE_HELP = [
-  'The judge is the small model that rates each prompt. Pick one:',
-  '  /auto judge jev                     Jev 1.14 on OpenRouter (default; fast, needs /auto key)',
-  '  /auto judge ollama <model> [url]    a chat model in Ollama, e.g. /auto judge ollama qwen3:4b',
-  '  /auto judge lmstudio <model> [url]  a chat model loaded in LM Studio',
-  '  /auto judge chat <url> <model>      any OpenAI-compatible /v1/chat/completions server',
-  '  /auto judge local [url]             a llama.cpp decision endpoint (/v1/systemone), e.g. H2O-Lightning-4B',
-  '  /auto judge test                    rate two sample prompts with the current judge',
-  '  /auto judge                         show the current judge',
-  'A local server that wants a key: copy it, then /auto key judge (or set CLUTCH_JUDGE_KEY).',
-].join('\n')
-
-function chatUrl(u: string): string {
-  const base = u.replace(/\/+$/, '')
-  if (/\/api\/chat$/.test(base)) return base
-  return /\/chat\/completions$/.test(base) ? base : /\/v1$/.test(base) ? `${base}/chat/completions` : `${base}/v1/chat/completions`
-}
-
-function decisionUrl(u: string): string {
-  const base = u.replace(/\/+$/, '')
-  return /\/v1\/systemone$/.test(base) ? base : `${base}/v1/systemone`
-}
-
-async function testJudge($: EngineInterface): Promise<string> {
-  const samples: [string, string][] = [['thanks!', 'trivial'], ['our tests pass locally but time out in CI, find out why and fix it', 'hard']]
-  const lines: string[] = []
-  for (const [text, expect] of samples) {
-    const started = await $.clock.now()
-    const s = await score($, `User: ${text}`)
-    const ms = (await $.clock.now()) - started
-    lines.push(s === null
-      ? `  "${text}": no answer after ${ms} ms`
-      : `  "${text}": ${s.toFixed(2)} of 4 (expected ${expect}), ${ms} ms`)
-  }
-  const ok = !lines.some(l => l.includes('no answer'))
-  return `${judgeName(judge)}:\n${lines.join('\n')}\n${ok ? 'It answers. /auto starts Clutch with it.' : 'It did not answer. Check that the server is running and the model name is right (/auto judge help).'}`
-}
-
-async function setJudge($: EngineInterface, j: Judge): Promise<string> {
-  judge = j
-  await $.store.set('judge', j)
-  paint($)
-  return `Judge set: ${judgeName(j)}.\n${await testJudge($)}`
-}
-
-async function judgeCommand($: EngineInterface, parts: string[]): Promise<string> {
-  const [kind = '', a, b] = parts
-  const k = kind.toLowerCase()
-  switch (k) {
-    case '': return `Judge: ${judgeName(judge)}.\n${JUDGE_HELP}`
-    case 'help': case '?': return JUDGE_HELP
-    case 'test': return testJudge($)
-    case 'jev': case 'openrouter': return setJudge($, { kind: 'jev' })
-    case 'local': return setJudge($, { kind: 'local', url: decisionUrl(a ?? DEFAULT_URL.local) })
-    case 'ollama': case 'lmstudio':
-      if (!a) return `Name the model, e.g. /auto judge ${k} qwen3:4b`
-      // Ollama on another address keeps its own API
-      return setJudge($, { kind: 'chat', model: a, url: k === 'ollama' ? (b ? `${b.replace(/\/+$/, '').replace(/\/api\/chat$/, '')}/api/chat` : DEFAULT_URL.ollama) : chatUrl(b ?? DEFAULT_URL.lmstudio) })
-    case 'chat':
-      if (!a || !b) return 'Give the server and the model, e.g. /auto judge chat http://127.0.0.1:8000 my-model'
-      return setJudge($, { kind: 'chat', url: chatUrl(a), model: b })
-    default: return `Unknown judge "${kind}".\n${JUDGE_HELP}`
-  }
 }
 
 // --- Commands ---
 
 async function status($: EngineInterface): Promise<string> {
   const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'
-  const lines = [`Clutch is ${mode === 'auto' ? 'on (/auto: model and effort)' : mode === 'effort' ? 'on (/auto-effort: effort only)' : 'off'}.`]
-  lines.push(`Judge: ${judgeName(judge)}.`)
-  if (judge.kind === 'jev') {
+  const lines = [`Clutch is ${mode === 'auto' ? 'on (/clutch: model and effort)' : mode === 'effort' ? 'on (/clutch-effort: effort only)' : 'off'}.`]
+  if (localOn) lines.push(`Judge: H2O-Lightning-4B on this computer (/clutch local off switches to Jev).`, localSummary())
+  else {
     const found = await findKey($)
-    lines.push(found ? `Key: from ${found.from}, ${await checkKey($, found.key)}.` : 'Key: none yet.\n' + SETUP)
+    lines.push('Judge: Jev 1.14 on OpenRouter (/clutch local runs one on this computer instead).')
+    lines.push(found ? `Key: from ${found.from}, ${await checkKey($, found.key)}.` : 'Key: none yet. /clutch key saves one, or /clutch local skips OpenRouter.')
   }
   lines.push(briefing
-    ? 'Session brief: Haiku is writing a fresh one in the background.'
+    ? 'Session brief: Haiku is refreshing it in the background.'
     : brief ? `Session brief: ready (${brief.split(/\s+/).length} words), refreshed in the background every few turns.` : 'Session brief: none yet (written in the background after your first reply).')
   const r = (await $.state.get({ plugin: 'clutch', key: 'last' })).value as Route | null
   if (r && r.score >= 0) lines.push(`Last pick: ${r.model ? short(r.model) + ', ' : ''}${r.effort} effort (score ${r.score.toFixed(2)} of 4).`)
@@ -319,14 +407,15 @@ async function status($: EngineInterface): Promise<string> {
 }
 
 const HELP = [
-  'Clutch picks the model and effort for each prompt you send.',
-  '  /auto          turn it on (picks model and effort)',
-  '  /auto-effort   turn it on, but keep your model (picks effort only)',
-  '  /auto off      turn it off',
-  '  /auto key      save the OpenRouter key on your clipboard',
-  '  /auto judge    choose the model that rates prompts: Jev, or one on your computer',
-  '  /auto brief    show the session brief Haiku keeps in the background',
-  '  /auto status   check the key, the judge, the mode and the last pick',
+  'Clutch picks the model and effort for each message you send.',
+  '  /clutch            turn it on (picks model and effort)',
+  '  /clutch-effort     turn it on, but keep your model (picks effort only)',
+  '  /clutch off        turn it off',
+  '  /clutch local      rate messages with a free model on this computer (one-time 3 GB download)',
+  '  /clutch local off  rate messages with Jev on OpenRouter instead',
+  '  /clutch key        save the OpenRouter key on your clipboard (for Jev)',
+  '  /clutch brief      show the session brief Haiku keeps in the background',
+  '  /clutch status     check the judge, the key, the mode and the last pick',
 ].join('\n')
 
 async function setMode($: EngineInterface, mode: RouterMode) {
@@ -338,23 +427,43 @@ async function setMode($: EngineInterface, mode: RouterMode) {
   paint($)
 }
 
+async function localCommand($: EngineInterface, arg: string): Promise<string> {
+  if (arg === 'off') {
+    await setLocalOn($, false)
+    return (await findKey($))
+      ? 'Local off: Jev on OpenRouter rates your messages now. The model stays on disk for next time.'
+      : 'Local off. Jev on OpenRouter needs a key: copy one from https://openrouter.ai/keys and type /clutch key.'
+  }
+  const why = await eligibility($)
+  if (why) return `This computer can't run the local model: ${why}. Clutch stays on Jev (OpenRouter).`
+  await setLocalOn($, true)
+  if (local.phase === 'ready') return 'Local on: the model on this computer rates your messages.'
+  return `Local on. Clutch is setting up the model on this computer: a one-time download of about ${gb(MODEL.bytes)}, then it starts by itself. The status line shows the progress; until it is ready, ${(await findKey($)) ? 'Jev keeps rating your messages' : 'messages use your session\'s own model'}.`
+}
+
 // One handler for both commands: on/off, plus the setup words
 async function runCommand($: EngineInterface, args: string, on: RouterMode): Promise<string> {
-  const parts = args.trim().split(/\s+/).filter(Boolean)
-  const word = (parts[0] ?? '').toLowerCase()
+  const parts = args.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const word = parts[0] ?? ''
   if (word === 'off') { await setMode($, 'off'); return 'Clutch off.' }
-  if (word === 'key') return saveKey($, (parts[1] ?? '').toLowerCase() === 'judge')
-  if (word === 'judge') return judgeCommand($, parts.slice(1))
+  if (word === 'key') return saveKey($)
+  if (word === 'local') return localCommand($, parts[1] ?? 'on')
   if (word === 'status') return status($)
   if (word === 'brief') return brief ? `Session brief${briefing ? ' (a fresh one is being written)' : ''}:\n${brief}` : 'No session brief yet. Haiku writes one in the background after your first reply while Clutch is on.'
   if (word === 'help' || word === '?') return HELP
   if (word) return `Unknown option "${word}".\n${HELP}`
-  if (!(await ready($))) return SETUP
+
+  // No OpenRouter key: local is the default, if this computer can run it
+  let intro = ''
+  if (!localOn && !(await findKey($))) {
+    if (await eligibility($)) return SETUP
+    intro = (await localCommand($, 'on')) + '\n'
+  }
   await setMode($, on)
-  const who = judge.kind === 'jev' ? 'Jev' : judge.kind === 'local' ? 'Your local decision model' : judge.model
-  return on === 'auto'
-    ? `Clutch engaged: ${who} picks the model and effort for every prompt, helped by a session brief Haiku keeps in the background. /auto off disengages.`
-    : `Clutch effort engaged: ${who} picks the effort for every prompt, your model stays. /auto off disengages.`
+  const who = localOn ? 'the model on this computer' : 'Jev'
+  return intro + (on === 'auto'
+    ? `Clutch engaged: ${who} picks the model and effort for every message, helped by a session brief Haiku keeps in the background. /clutch off disengages.`
+    : `Clutch effort engaged: ${who} picks the effort for every message, your model stays. /clutch off disengages.`)
 }
 
 // --- The session brief ---
@@ -437,25 +546,26 @@ const routes = new Map<string, Route>()
 export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'auto', description: 'Clutch: pick the model and effort for every prompt (/auto off, key, judge, brief, status, help)' })
-    await $.command.register({ name: 'auto-effort', description: 'Clutch: pick only the effort, your model stays (/auto off to stop)' })
+    await $.command.register({ name: 'clutch', description: 'Clutch: pick the model and effort for every message (/clutch off, local, key, brief, status, help)' })
+    await $.command.register({ name: 'clutch-effort', description: 'Clutch: pick only the effort, your model stays (/clutch off to stop)' })
     const saved = (await $.store.get('mode')) as RouterMode | undefined
-    const savedJudge = (await $.store.get('judge')) as Judge | undefined
-    if (savedJudge?.kind) judge = savedJudge
+    localOn = (await $.store.get('local')) === true
     if (saved) await update($, modeAtom, () => saved)
     shown = { mode: saved ?? 'off', route: null }
     paint($)
-    // First run: one line pointing at the setup, never again once a key exists
-    if (!saved && !(await $.store.get('welcomed')) && !(await ready($))) {
-      $.ui.toast('Clutch is installed. Type /auto help to set it up.')
+    // Local and on: get the model server going before the first message
+    if (localOn && saved && saved !== 'off') ensureLocal($)
+    // First run: one line pointing at the setup
+    if (!saved && !(await $.store.get('welcomed'))) {
+      $.ui.toast('Clutch is installed. Type /clutch to start, or /clutch help.')
       await $.store.set('welcomed', true)
     }
     return next(e)
   })
 
   // Always on, never a toggle: the mode is shared by every session, so a toggle could switch it off unseen
-  on('command.run', { command: 'auto' }, async ($, e) => ({ text: await runCommand($, e.args, 'auto') }))
-  on('command.run', { command: 'auto-effort' }, async ($, e) => ({ text: await runCommand($, e.args, 'effort') }))
+  on('command.run', { command: 'clutch' }, async ($, e) => ({ text: await runCommand($, e.args, 'auto') }))
+  on('command.run', { command: 'clutch-effort' }, async ($, e) => ({ text: await runCommand($, e.args, 'effort') }))
 
   on('prompt.submit', async ($, e, next) => {
     const mode = (await $.state.get({ plugin: 'clutch', key: 'mode' })).value ?? 'off'

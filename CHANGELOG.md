@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.1
+
+The commands are named after the plugin.
+
+- `/auto` is now `/clutch`, and `/auto-effort` is now `/clutch-effort`. Every option moves with it: `/clutch off`, `/clutch local`, `/clutch local off`, `/clutch key`, `/clutch brief`, `/clutch status`, `/clutch help`. The old `/auto` commands no longer exist.
+- Local setup is safer: one download at a time across Claude Code windows, `/clutch local off` also cancels a running download, and a failed setup waits for you instead of retrying on every message.
+
+## 1.3.0
+
+Local is now one switch, and Clutch sets it up by itself.
+
+- `/auto local` checks the computer (Apple silicon, 8 GB of memory, free disk), downloads llama.cpp and H2O-Lightning-4B once into `~/.clutch` (pinned versions, SHA-256 checked, resumable), starts the server and rates messages with it. The status line shows the download and setup.
+- `/auto local off` switches to Jev on OpenRouter and stops the server; the files stay.
+- No OpenRouter key: `/auto` turns local on by itself, if the computer can run it.
+- Removed `/auto judge` and its Ollama, LM Studio and chat options: one local judge, managed by Clutch.
+
 ## 1.2.0
 
 - Local judges: `/auto judge` picks the model that rates each prompt. Jev on OpenRouter stays the default; `/auto judge ollama <model>`, `/auto judge lmstudio <model>` and `/auto judge chat <url> <model>` use a chat model on your own computer, and `/auto judge local [url]` uses llama.cpp's `/v1/systemone` decision endpoint. Setting a judge tests it on two sample prompts at once. `/auto key judge` saves a local server's key.

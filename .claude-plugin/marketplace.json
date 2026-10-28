@@ -7,7 +7,7 @@
     {
       "name": "clutch",
       "source": "./",
-      "description": "Clutch: Jev picks the model and effort for each Claude Code prompt, informed by a Haiku brief of the session (/auto, /auto-effort)"
+      "description": "Clutch: Jev picks the model and effort for each Claude Code prompt, informed by a Haiku brief of the session (/clutch, /clutch-effort)"
     }
   ]
 }

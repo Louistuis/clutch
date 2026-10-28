@@ -1,5 +1,7 @@
 export type RouterMode = 'off' | 'auto' | 'effort'
 
+export type RouterMode = 'off' | 'auto' | 'effort'
+
 /** The model that rates each prompt: Jev on OpenRouter, a llama.cpp /v1/systemone endpoint, or a chat model */
 export type Judge =
   | { kind: 'jev' }
@@ -11,7 +13,7 @@ export type Route = {
   score: number
   level: number
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-  /** set only by /auto */
+  /** set only by /clutch */
   model?: string
 }
 

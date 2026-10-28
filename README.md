@@ -2,9 +2,9 @@
 
 **Clutch picks the right Claude for every message you send.** A "thanks!" runs on fast, cheap Haiku. A hard bug runs on Opus with deep thinking. Everything in between gets Sonnet. You just type like normal.
 
-It works inside [Claude Code](https://claude.com/claude-code), the coding assistant from Anthropic. You do not need to know how to code or how GitHub works to set it up: it takes about five minutes and a dollar of credit.
+It works inside [Claude Code](https://claude.com/claude-code), the coding assistant from Anthropic. You do not need to know how to code or how GitHub works to set it up.
 
-## Set it up in 4 steps
+## Set it up
 
 You need Claude Code installed and signed in. If you can chat with Claude in your terminal or in the Claude desktop app's Code tab, you are ready.
 
@@ -20,27 +20,18 @@ You need Claude Code installed and signed in. If you can chat with Claude in you
 
 Then type `/reload-plugins` (or just close Claude Code and open it again).
 
-**2. Get an OpenRouter key.** Clutch asks a tiny, fast decision model called Jev how hard each message is. Jev runs on OpenRouter, so you need your own key there:
-
-- Go to [openrouter.ai/keys](https://openrouter.ai/keys), sign in (Google or GitHub sign-in works), and click **Create key**.
-- Add a little credit at [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits). $1 covers about 25,000 messages, so $1 to $5 is plenty.
-- Click the copy button next to your new key.
-
-**3. Save the key.** Back in Claude Code, with the key still copied, type:
+**2. Turn it on.**
 
 ```
-/auto key
+/clutch
 ```
 
-Clutch reads the key from your clipboard, saves it in a private file on your computer and checks that it works. The key is never shown in the chat and never sent to Claude.
+That's it. Clutch uses a small "judge" model to rate how hard each message is:
 
-**4. Turn it on.**
+- **On a Mac with Apple silicon (M1 or newer, 8 GB of memory or more),** Clutch runs a free judge right on your computer. The first time, it downloads it once (about 3 GB) and starts it by itself; the status line shows the progress. No account, no key, nothing leaves your Mac for the rating.
+- **On other computers,** Clutch uses Jev on OpenRouter instead, which needs a key. See [Use Jev on OpenRouter](#use-jev-on-openrouter) below; it takes two minutes and a dollar of credit.
 
-```
-/auto
-```
-
-That's it. Under the chat box you will see which Claude it picked for each message, for example `Clutch → sonnet · medium · 1.2/4 · ctx`.
+Under the chat box you will see which Claude it picked for each message, for example `Clutch → sonnet · medium · 1.2/4 · local · ctx`.
 
 | Status line piece | Meaning |
 | --- | --- |
@@ -48,39 +39,39 @@ That's it. Under the chat box you will see which Claude it picked for each messa
 | `1.2/4` | how hard the judge rated it, from 0 (trivial) to 4 (very hard) |
 | `✎ brief` | Haiku is quietly refreshing the session brief in the background |
 | `ctx` | a session brief is ready and was used for this pick |
-| `local` or a model name | a judge on your own computer is rating prompts instead of Jev |
+| `local` | the judge on your own computer rated it |
+| `↓ local model 42%` | the one-time download is running |
 
-Don't want OpenRouter at all? Skip steps 2 and 3 and use a free model on your own computer instead: see [Run the judge on your own computer](#run-the-judge-on-your-own-computer).
-
-Something not working? Type `/auto status`. It tells you whether your key works, whether Clutch is on and what it picked last.
+Something not working? Type `/clutch status`. It tells you whether your key works, whether Clutch is on and what it picked last.
 
 ## Commands
 
 | Type this | What happens |
 | --- | --- |
-| `/auto` | Clutch picks the model and how hard it thinks, for every message. |
-| `/auto-effort` | Clutch picks only how hard it thinks. Your model stays the one you chose (cheaper on long chats). |
-| `/auto off` | Turns Clutch off. |
-| `/auto key` | Saves the OpenRouter key on your clipboard. |
-| `/auto judge` | Chooses the model that rates your messages: Jev, or one on your computer. |
-| `/auto brief` | Shows the session brief Haiku keeps in the background. |
-| `/auto status` | Checks your key, the judge, the mode and the last pick. |
-| `/auto help` | Lists these commands. |
+| `/clutch` | Clutch picks the model and how hard it thinks, for every message. |
+| `/clutch-effort` | Clutch picks only how hard it thinks. Your model stays the one you chose (cheaper on long chats). |
+| `/clutch off` | Turns Clutch off. |
+| `/clutch local` | Rates messages with the free judge on your computer (sets it up the first time). |
+| `/clutch local off` | Rates messages with Jev on OpenRouter instead. |
+| `/clutch key` | Saves the OpenRouter key on your clipboard (for Jev). |
+| `/clutch brief` | Shows the session brief Haiku keeps in the background. |
+| `/clutch status` | Shows the judge, the download or key, the mode and the last pick. |
+| `/clutch help` | Lists these commands. |
 
 Clutch stays on until you turn it off, in every session.
 
 ## What it costs
 
-- **OpenRouter:** about $0.00004 per message for Jev. $1 lasts a very long time. A judge on your own computer costs nothing.
+- **The judge:** free on your own computer (about 3 GB of disk, and some memory while Claude Code is open). Jev on OpenRouter costs about $0.00004 per message, so $1 lasts a very long time.
 - **Your Claude plan:** every few replies, Clutch has Haiku write a short summary of the conversation in the background (see below). Haiku is Claude's smallest model, so this is a small extra on top of normal use. Picking Haiku or Sonnet for easy messages usually saves more than that.
 
 ## How it decides
 
-The judge, Jev 1.14 by default (TypeSafe's decision model), reads each message through [OpenRouter](https://openrouter.ai) and scores how much work it is, from 0 (trivial) to 4 (very hard). One call takes about 0.3 s.
+The judge reads each message and scores how much work it is, from 0 (trivial) to 4 (very hard). It is one of two small decision models: [H2O-Lightning-4B](https://huggingface.co/h2oai/h2o-lightning-4b-gguf) (open, Apache-2.0) on your computer, or Jev 1.14 (TypeSafe) on [OpenRouter](https://openrouter.ai). Either answers in well under a second.
 
 The judge does not read messages in a vacuum. Every few replies, in the background, Haiku (at medium effort) compresses the newest part of the conversation into a short routing brief: the task, its stage, the systems in play, what just happened and what is still open. Jev reads that brief with your next message, so "ok do it" after a long plan routes as the plan, and a quick question in the middle of a hard session still routes as a quick question.
 
-| Jev's score | `/auto` model | Effort (both commands) |
+| Jev's score | `/clutch` model | Effort (both commands) |
 | --- | --- | --- |
 | trivial (chat, a quick fact) | Haiku 5.5 | low |
 | simple (one small edit or command) | Sonnet 5.5 | medium |
@@ -93,48 +84,28 @@ The judge does not read messages in a vacuum. Every few replies, in the backgrou
 - Subagents keep their own model and effort.
 - Messages that start with a slash command, and messages that are not typed by you, are not routed.
 
-## Run the judge on your own computer
+## The local judge
 
-The judge is the small model that rates each message. Jev on OpenRouter is the default, but any model on your own computer can do the job instead: free, private, no account. You need a little app that runs models locally. [Ollama](https://ollama.com) is the easiest.
+`/clutch local` (or just `/clutch` without an OpenRouter key) does everything by itself:
 
-**With Ollama (easiest):**
+1. **Checks your computer:** a Mac with Apple silicon, 8 GB of memory, and about 4 GB of free disk. If it can't run the judge well, it says why and stays on Jev.
+2. **Downloads two files once,** into `~/.clutch`: llama.cpp's server (16 MB, from its official GitHub release) and H2O-Lightning-4B (3.1 GB, from Hugging Face). Both are pinned to exact versions and checked against their SHA-256 before use. An interrupted download picks up where it stopped.
+3. **Starts the judge** on `127.0.0.1:8749` while Claude Code is open, and stops it when you close Claude Code. Several sessions share one copy.
 
-1. Install Ollama from [ollama.com/download](https://ollama.com/download) and open it.
-2. In a terminal, download a judge model (about 3 GB, once):
+Until it is ready, Jev keeps rating your messages if you have a key; otherwise those messages simply use your session's own model. `/clutch local off` switches to Jev and stops the local server; the files stay on disk. To remove them, delete the `~/.clutch` folder.
 
-   ```
-   ollama pull hf.co/h2oai/h2o-lightning-4b-gguf:Q5_K_M
-   ```
+## Use Jev on OpenRouter
 
-3. In Claude Code:
+Jev 1.14 runs on OpenRouter, so it works on any computer. You need your own key:
 
-   ```
-   /auto judge ollama hf.co/h2oai/h2o-lightning-4b-gguf:Q5_K_M
-   ```
+1. Go to [openrouter.ai/keys](https://openrouter.ai/keys), sign in (Google or GitHub sign-in works), and click **Create key**.
+2. Add a little credit at [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits). $1 covers about 25,000 messages.
+3. Click the copy button next to your new key, then type `/clutch key` in Claude Code. Clutch reads the key from your clipboard, saves it in a private file and checks that it works. The key is never shown in the chat and never sent to Claude.
+4. If local is on, type `/clutch local off` to switch to Jev.
 
-   Clutch rates two sample messages with it right away and tells you if it answers. Then type `/auto`.
+### Other ways to give it the key
 
-**With LM Studio:** load a model, start its local server, then `/auto judge lmstudio <model name>`.
-
-**Any OpenAI-compatible server** (llama.cpp, vLLM, a server on another machine): `/auto judge chat <url> <model>`.
-
-**llama.cpp's decision endpoint:** a recent `llama-server` serves `/v1/systemone`, the same scoring API Jev uses, which gives a real expected score instead of a number the model writes out:
-
-```
-llama-server -hf h2oai/h2o-lightning-4b-gguf:Q5_K_M
-```
-
-then `/auto judge local` (it defaults to `http://127.0.0.1:8080`).
-
-Notes:
-- H2O-Lightning-4B is an open (Apache-2.0) decision model built for this kind of rating, which is why it is the suggestion. Other small chat models work too; `/auto judge test` and the benchmark show how well. Thinking is switched off in the request, so a reasoning model answers at once.
-- A local judge gets up to 6 s per message before Clutch falls back to your session's settings. A Mac with Apple silicon answers in well under a second.
-- If your server wants a key: copy it, then `/auto key judge` (or set `CLUTCH_JUDGE_KEY`).
-- `/auto judge jev` switches back to Jev. The choice is remembered.
-
-## Other ways to give it the key
-
-If `/auto key` can't read your clipboard (some Linux setups), use one of these instead.
+If `/clutch key` can't read your clipboard (some Linux setups), use one of these instead.
 
 Set an environment variable before starting Claude Code:
 
@@ -150,7 +121,7 @@ printf '%s\n' 'YOUR_KEY' > ~/.config/openrouter.key
 chmod 600 ~/.config/openrouter.key
 ```
 
-The environment variable wins if both are set. Without a key, `/auto` shows the setup steps instead of turning on.
+The environment variable wins if both are set. Without a key, `/clutch` shows the setup steps instead of turning on.
 
 ## The session brief
 
@@ -178,7 +149,7 @@ From a live test session (Opus as the session model):
 
 The last one shows the trade-off: in a heavy session a bare "thanks!" scored 0.53, just over the line between trivial and simple. Clutch errs towards a stronger model rather than a weaker one.
 
-Type `/auto brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file` before starting Claude Code to append every score, the exact text the judge saw and each brief rewrite to that file.
+Type `/clutch brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file` before starting Claude Code to append every score, the exact text the judge saw and each brief rewrite to that file.
 
 ## Benchmark
 
@@ -187,11 +158,10 @@ Type `/auto brief` to read the current brief. Set `CLUTCH_DEBUG=/path/to/file` b
 | | exact level | within one level | right model |
 | --- | --- | --- | --- |
 | Jev 1.14 (OpenRouter, ~0.3 s) | 93.2% | 100% | 94.5% |
-| H2O-Lightning-4B, decision endpoint (local, ~0.7 s) | 90.4% | 98.6% | 93.2% |
-| H2O-Lightning-4B, chat mode (local, ~0.5 s) | 90.4% | 98.6% | 94.5% |
+| H2O-Lightning-4B, the local judge (~0.7 s) | 90.4% | 98.6% | 93.2% |
 | prompt length only (no model) | 56.2% | 95.9% | 79.5% |
 
-The local rows ran on a MacBook Air M4 with the Q5_K_M build, through llama.cpp. Ollama and LM Studio use the same chat request but were not benchmarked here.
+The local row ran on a MacBook Air M4 with the same Q5_K_M file and llama.cpp build Clutch downloads.
 
 An earlier run scored 91.8% exact; one borderline prompt (score 3.45 to 3.5) flips between runs. No prompt was off by more than one level, and Jev was never too strong on the model, only too weak on 4 prompts (a hard task sent to Sonnet).
 
@@ -205,26 +175,26 @@ Run it yourself (needs Python 3):
 python3 bench/bench_router.py
 ```
 
-That tests Jev (your OpenRouter key as above; about $0.001 in total). To test a judge on your computer instead:
+That tests Jev (your OpenRouter key; about $0.001 in total). To test the local judge while Clutch has it running:
 
 ```
-python3 bench/bench_router.py --judge chat --url http://127.0.0.1:11434/api/chat --model hf.co/h2oai/h2o-lightning-4b-gguf:Q5_K_M
+python3 bench/bench_router.py --judge local --url http://127.0.0.1:8749/v1/systemone
 ```
 
-or `--judge local --url http://127.0.0.1:8080/v1/systemone`. Each run prints accuracy, a confusion matrix and the misses.
+Each run prints accuracy, a confusion matrix and the misses.
 
 ## Limits
 
 - The model picker in the UI keeps showing your session's model, because mods cannot change it. The status line shows the model and effort the router actually used.
-- Switching models skips the prompt cache, so `/auto` can cost more than `/auto-effort` on long conversations. If cost matters more than model choice, use `/auto-effort`.
-- If the judge does not answer in time (2.5 s for Jev, 6 s for a local judge) or returns an error, that turn keeps your session's model and effort, and the status line says so.
-- The mode is stored once and shared by all your sessions. Running `/auto off` in one session turns it off in the others for their next prompt.
+- Switching models skips the prompt cache, so `/clutch` can cost more than `/clutch-effort` on long conversations. If cost matters more than model choice, use `/clutch-effort`.
+- If the judge does not answer in time (2.5 s for Jev, 6 s for the local one) or returns an error, that turn keeps your session's model and effort, and the status line says so.
+- The mode is stored once and shared by all your sessions. Running `/clutch off` in one session turns it off in the others for their next prompt.
 - The judge scores difficulty from text. The brief tells it what the session is about, but it still cannot read your code.
 - Refreshing the brief costs one Haiku call every few turns on your Claude account while Clutch is on.
 
 ## Privacy
 
-For every routed prompt, Clutch sends your prompt text (up to 8,000 characters), the last 1,500 characters of Claude's previous reply and the session brief (about 110 words summarising the conversation, which can name files, services and errors) to OpenRouter, which passes them to TypeSafe's Jev model to be scored. No files or raw tool output are sent there. The brief itself is written by Haiku through your own Claude account, the same way Claude Code sends the conversation already. The request is subject to OpenRouter's and TypeSafe's terms and privacy policies. With a judge on your own computer, nothing goes to OpenRouter at all. Turn Clutch off with `/auto off` if your prompts must not leave your machine.
+With Jev, for every routed prompt Clutch sends your prompt text (up to 8,000 characters), the last 1,500 characters of Claude's previous reply and the session brief (about 110 words summarising the conversation, which can name files, services and errors) to OpenRouter, which passes them to TypeSafe's Jev model to be scored. No files or raw tool output are sent there. The brief itself is written by Haiku through your own Claude account, the same way Claude Code sends the conversation already. The request is subject to OpenRouter's and TypeSafe's terms and privacy policies. With the local judge, nothing goes to OpenRouter at all. Turn Clutch off with `/clutch off` if your prompts must not leave your machine.
 
 ## How it works
 
