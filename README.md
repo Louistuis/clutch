@@ -44,6 +44,26 @@ Under the chat box you will see which Claude it picked for each message, for exa
 
 Something not working? Type `/clutch status`. It tells you whether your key works, whether Clutch is on and what it picked last.
 
+## Does it actually work?
+
+We tested it, and put every number in the open. The short version:
+
+- 🧠 **Just as smart.** We asked 16 tricky questions, the kind that trip up a small model (like "Which is bigger, 9.11 or 9.9?"). Without Clutch, Claude got 16 right. With Clutch, also 16 right, even though Clutch used the small, cheap model for most of them.
+- 💸 **Cheaper.** On real coding work Clutch cost **25% less**. On quick questions it cost **almost 9 times less**.
+- ⏱️ **About as fast.** Quick questions were a little faster with Clutch. Real coding work came out a bit slower, mostly because of one slow reply from Claude's servers.
+- ✅ **Same result.** In the coding test, the project's own tests passed at the end both with and without Clutch.
+
+We fold all three into one score, the **Torque index**. Above 1 means Clutch is worth turning on.
+
+| | Smart | Cheaper | Faster | **Torque** |
+| --- | --- | --- | --- | --- |
+| Real coding work | 100% | 1.33× | 0.84× | **1.06** |
+| Quick questions | 100% | 8.6× | 1.04× | **2.99** |
+
+These were small tests, so treat them as a good sign, not a promise.
+
+👉 **[See exactly how we tested it](BENCHMARKS.md):** every question, every message, every price, how the answers were graded, and the limits.
+
 ## Commands
 
 | Type this | What happens |
@@ -187,17 +207,6 @@ Some projects deserve their own rules. Each setting applies only to the folder C
 /clutch project max sonnet    never above Sonnet here (for example a scratch repo)
 /clutch project reset         back to the global settings
 ```
-
-## Benchmarks
-
-Clutch is measured on three things at once: intelligence, cost and speed, folded into one number, the **Torque index** (above 1 means Clutch is worth having on). [BENCHMARKS.md](BENCHMARKS.md) explains every test, how it was run and how it was graded, and shows every raw number.
-
-| Workload | Intelligence kept | Cheaper | Faster | **Torque** |
-| --- | --- | --- | --- | --- |
-| Real coding sessions | 100% | 1.33× | 0.84× | **1.06** |
-| Single questions (mostly trick questions) | 100% (16 of 16) | 8.6× | 1.04× | **2.99** |
-
-In real sessions Clutch cut the cost by 25% and both test projects still ended with every test passing. On 16 questions built to catch a router that picks too weak a model, it got every answer right while picking Haiku for 13 of them. The samples are small; the limits are spelled out in [BENCHMARKS.md](BENCHMARKS.md#limits-read-these-before-quoting-the-numbers).
 
 ## Limits
 
