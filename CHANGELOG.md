@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+
+- Live savings in the status line: `saved 61% (last 5)` shows what your last 5 messages cost against the same tokens on your session's own model, with the briefs and judge counted. When Clutch moved up to a stronger model it says `cost +12%` instead. `/clutch savings reset` clears it too.
+- `CLUTCH_DEBUG` also logs the rolling figure after every reply.
+
 ## 1.6.0
 
 Saves more without touching how smart it is.

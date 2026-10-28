@@ -31,7 +31,7 @@ That's it. Clutch uses a small "judge" model to rate how hard each message is:
 - **On a Mac with Apple silicon (M1 or newer, 8 GB of memory or more),** Clutch runs a free judge right on your computer. The first time, it downloads it once (about 3 GB) and starts it by itself; the status line shows the progress. No account, no key, nothing leaves your Mac for the rating.
 - **On other computers,** Clutch uses Jev on OpenRouter instead, which needs a key. See [Use Jev on OpenRouter](#use-jev-on-openrouter) below; it takes two minutes and a dollar of credit.
 
-Under the chat box you will see which Claude it picked for each message, for example `Clutch → sonnet · medium · 1.2/4 · local · ctx`.
+Under the chat box you will see which Claude it picked for each message, for example `Clutch → sonnet · medium · 1.2/4 · local · ctx · saved 61% (last 5)`.
 
 | Status line piece | Meaning |
 | --- | --- |
@@ -41,6 +41,7 @@ Under the chat box you will see which Claude it picked for each message, for exa
 | `ctx` | a session brief is ready and was used for this pick |
 | `local` | the judge on your own computer rated it |
 | `↓ local model 42%` | the one-time download is running |
+| `saved 61% (last 5)` | your last 5 messages cost 61% less than the same work on your own session model (Clutch's briefs and judge included). `cost +12%` means Clutch moved up to a stronger model for them |
 
 Something not working? Type `/clutch status`. It tells you whether your key works, whether Clutch is on and what it picked last.
 
@@ -193,6 +194,7 @@ Clutch is built to spend less, not just to pick well:
 - **No bouncing.** A lone "ok" or "thanks" between two Sonnet tasks stays on Sonnet at low effort, because dropping to Haiku and coming straight back would mean reading the whole conversation again at Sonnet's full price. Two easy messages in a row do move down.
 - **A nudge to start fresh.** In a long session (60,000+ tokens), every message re-reads the whole thing. When you start a clearly new task, Clutch shows a short hint that `/clear` (start fresh) or `/compact` (keep a summary) would make every following message much cheaper. It never clears anything by itself, and quick side questions don't trigger it.
 - **Effort changes are free.** Changing only the thinking effort does not break the prompt cache (we checked: after going from high to low effort and back, Claude Code still read 38,000 and then 50,000 tokens from the cache), so Clutch adjusts effort on every message.
+- **Live savings in the status line.** `saved 61% (last 5)` is a rolling count over your last 5 messages, so you see right away what a run of easy messages saves. It is only the cost part of the Torque index: whether the answers stay as good is what the benchmarks check.
 - **`/clutch savings`** shows what Clutch has spent and saved so far: every routed request priced at the model Clutch picked and at your own session model, plus the briefs and the judge. In a test session it came to 58% less. On a Pro or Max plan, read it as a share of your usage limits.
 - **Subagents.** Helper agents are often the biggest hidden spend. A general-purpose subagent that has no model of its own gets one picked for its task, so a quick lookup runs on Haiku. Agents that name their own model keep it. On by default; `/clutch agents off` turns it off.
 - **No judge for small talk.** "thanks", "hi", "nice" and the like go straight to the lightest setting, with no judge call and no wait.

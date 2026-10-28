@@ -127,6 +127,9 @@ let briefing: Promise<void> | null = null
 let briefedChars = 0
 let turnsSinceBrief = 0
 let shown: { mode: RouterMode; route: Route | null } = { mode: 'off', route: null }
+// Cost of your last few messages, at what ran and at the session's own model (briefs and judge included)
+const RECENT_MESSAGES = 5
+let recent: { actual: number; baseline: number }[] = []
 
 // The status line: the pick, then what the judge and the brief are doing
 function paint($: EngineInterface) {
@@ -138,11 +141,21 @@ function paint($: EngineInterface) {
     : local.phase === 'downloading' ? ` · ↓ local model ${local.percent}%`
     : local.phase === 'unavailable' ? ' · local unavailable'
     : local.phase === 'idle' ? '' : ` · local ${local.phase}`
-  const tail = judgeNote + (briefing ? ' · ✎ brief' : brief ? ' · ctx' : '')
+  const tail = judgeNote + (briefing ? ' · ✎ brief' : brief ? ' · ctx' : '') + (mode === 'auto' ? recentNote() : '')
   if (!r) return $.ui.status(`${name} engaged${tail}`)
   if (r.score < 0) return $.ui.status(`${name}: no judge yet, session settings${tail}`)
   const model = r.model ? `${short(r.model)}${r.held ? ' (held)' : ''} · ` : ''
   $.ui.status(`${name} → ${model}${r.effort} · ${r.score.toFixed(1)}/4${tail}`)
+}
+
+// "saved 58% (last 5)": what the last few messages cost against the same tokens on your own model
+function recentNote(): string {
+  const actual = recent.reduce((n, m) => n + m.actual, 0)
+  const baseline = recent.reduce((n, m) => n + m.baseline, 0)
+  if (baseline <= 0) return ''
+  const pct = Math.round((1 - actual / baseline) * 100)
+  const span = `last ${recent.length}`
+  return pct >= 0 ? ` · saved ${pct}% (${span})` : ` · cost +${-pct}% (${span})`
 }
 
 async function home($: EngineInterface): Promise<string | null> {
@@ -498,10 +511,16 @@ async function addSavings($: EngineInterface, change: Partial<Savings>) {
   const s = ((await $.store.get('savings')) as Savings | undefined) ?? (await emptySavings($))
   for (const [k, v] of Object.entries(change)) (s as any)[k] += v
   await $.store.set('savings', s)
+  const now = recent[recent.length - 1]
+  if (now) {
+    now.actual += (change.actual ?? 0) + (change.brief ?? 0) + (change.judge ?? 0)
+    now.baseline += change.baseline ?? 0
+    paint($)
+  }
 }
 
 async function savingsReport($: EngineInterface, arg: string): Promise<string> {
-  if (arg === 'reset') { await $.store.set('savings', await emptySavings($)); return 'Savings tally reset.' }
+  if (arg === 'reset') { await $.store.set('savings', await emptySavings($)); recent = []; paint($); return 'Savings tally reset.' }
   const s = (await $.store.get('savings')) as Savings | undefined
   if (!s || !s.requests) return 'No routed requests counted yet. Clutch counts them while /clutch is on.'
   const days = Math.max(1, Math.round(((await $.clock.now()) - s.since) / 86400000))
@@ -776,6 +795,8 @@ export const register: Register = on => {
     if (mode === 'off' || e.command || e.isMeta || !isPerson || !e.text.trim()) return next(e)
 
     if (briefing) await Promise.race([briefing, $.clock.sleep(BRIEF_WAIT_MS)])
+    // A new message opens a new slot, so its judge call and replies count toward it
+    recent = [...recent, { actual: 0, baseline: 0 }].slice(-RECENT_MESSAGES)
     const route = await classify($, e.text, mode).catch(() => null)
     await update($, last, () => route)
     shown = { mode, route: route ?? { score: -1, level: -1, effort: 'high' } }
@@ -820,6 +841,8 @@ export const register: Register = on => {
     if (e.agentId !== undefined) return next(e)
     routes.delete(e.turnId)
     const mode = await effectiveMode($)
+    const debug = await $.env.get('CLUTCH_DEBUG')
+    if (debug && mode === 'auto') await $.fs.write(debug, ((await $.fs.read(debug).catch(() => '')) + `\n=== recent:${recentNote() || ' nothing yet'}\n`))
     // Not awaited: the brief is written while the user reads the reply, ready for their next prompt
     if (mode !== 'off' && briefOn) void maybeBrief($).catch(() => {})
     return next(e)
